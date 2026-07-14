@@ -93,18 +93,50 @@ def get_pdf_creation_date(pdf):
 def get_docx_creation_date(doc):
     return doc.core_properties.created
 
-def extract_images_from_pdfs_and_docs(pdfs, docs, identifier):
+def create_document_identifier(file_path):
+    path = Path(file_path)
+
+    parent = path.parent.name
+    filename = path.stem
+
+    return f"{parent}_{filename}"
+
+def extract_images_from_pdfs_and_docs(pdfs, docs):
     """
     Extract images from PDF and DOCX files.
     """
-    extracted = []
 
+    output_root = Path("data/Aquafin_data_cleaned/extracted_images")
+
+    def save_extracted_images(extracted, document_id):
+        output_dir = output_root / document_id
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        image_paths = []
+        original_paths = []
+        creation_dates = []
+
+        for i, item in enumerate(extracted):
+            save_path = output_dir / f"image_{i:04d}.png"
+            item["image"].save(save_path)
+
+            image_paths.append(str(save_path))
+            original_paths.append(item["source_path"])
+            creation_dates.append(item["creation_date"])
+
+        return image_paths, original_paths, creation_dates
+
+    all_image_paths = []
+    all_original_paths = []
+    all_creation_dates = []
+    
     for file_path in pdfs:
-        path = Path(file_path)
-        suffix = path.suffix.lower()
+        document_id = create_document_identifier(file_path)
+        extracted = []
 
-        if suffix == ".pdf":
+        try:
             pdf = fitz.open(file_path)
+
             creation_date = get_pdf_creation_date(pdf)
             if creation_date is None:
                 creation_date = datetime.fromtimestamp(os.path.getctime(file_path))
@@ -115,58 +147,69 @@ def extract_images_from_pdfs_and_docs(pdfs, docs, identifier):
 
                 for img in images:
                     xref = img[0]
+
                     base_image = pdf.extract_image(xref)
                     image_bytes = base_image["image"]
+
                     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+
                     extracted.append({
-                    "image": image,
-                    "source_path": str(file_path),
-                    "creation_date": creation_date
-                })
+                        "image": image,
+                        "source_path": str(file_path),
+                        "document_id": document_id,
+                        "creation_date": creation_date
+                    })
+
             pdf.close()
+
+            paths, originals, dates = save_extracted_images(extracted, document_id)
+
+            all_image_paths.extend(paths)
+            all_original_paths.extend(originals)
+            all_creation_dates.extend(dates)
+
+        except Exception as e:
+            print(f"Error processing PDF {file_path}: {e}")
+
+    # Process DOCX files
     for file_path in docs:
-        path = Path(file_path)
-        suffix = path.suffix.lower()
-        if suffix != ".docx":
-            continue
+        document_id = create_document_identifier(file_path)
+        extracted = []
 
         try:
             doc = Document(file_path)
+
             creation_date = get_docx_creation_date(doc)
             if creation_date is None:
                 creation_date = datetime.fromtimestamp(os.path.getctime(file_path))
 
             for rel in doc.part.rels.values():
-                target_ref = getattr(rel, 'target_ref', '')
-                if target_ref and 'image' in str(target_ref).lower():
+                target_ref = getattr(rel, "target_ref", "")
+                if target_ref and "image" in str(target_ref).lower():
                     image_bytes = rel.target_part.blob
                     try:
                         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+
                         extracted.append({
                             "image": image,
                             "source_path": str(file_path),
+                            "document_id": document_id,
                             "creation_date": creation_date
                         })
+
                     except OSError as e:
-                        print(f"Error occurred while processing image in {file_path}: {e}")
+                        print(f"Error processing image in {file_path}: {e}")
+
+            paths, originals, dates = save_extracted_images(extracted, document_id)
+
+            all_image_paths.extend(paths)
+            all_original_paths.extend(originals)
+            all_creation_dates.extend(dates)
 
         except Exception as e:
-            print(f"Error occurred while processing {file_path}: {e}")
+            print(f"Error processing DOCX {file_path}: {e}")
 
-    output_dir = Path("data/Aquafin_data_cleaned/extracted_images") / identifier
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    image_paths = []
-    original_paths = []
-    creation_dates = []
-
-    for i, item in enumerate(extracted):
-        save_path = output_dir / f"image_{i:04d}.png"
-        item["image"].save(save_path)
-        image_paths.append(str(save_path))
-        original_paths.append(item["source_path"])
-        creation_dates.append(item["creation_date"])
-    return image_paths, original_paths, creation_dates
+    return (all_image_paths, all_original_paths, all_creation_dates)
 
 match_table = []
 leftovers = []
@@ -249,12 +292,12 @@ for index, row in overview_df.iterrows():
             })
         
     # if there are images, we consider those as matched files, otherwise we can try to extract images from pdfs and docs
-    identifier = os.path.dirname(img)
+
     word_pdf_original_paths = []
     if not images:
         if pdfs or docs:
             print("extracting images from: ", pdfs, docs)
-            images, word_pdf_original_paths, creation_dates = extract_images_from_pdfs_and_docs(pdfs, docs, identifier)
+            images, word_pdf_original_paths, creation_dates = extract_images_from_pdfs_and_docs(pdfs, docs)
 
     images = list(dict.fromkeys(images)) # preserve order, remove duplicates
 
