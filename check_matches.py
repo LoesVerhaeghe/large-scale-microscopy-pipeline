@@ -2,6 +2,7 @@ import pandas as pd
 import os
 from pathlib import Path
 
+### check how many files are in the data folder, and how many of them are microscopic images
 def get_all_files(folder_path):
     """Recursively get all files in a folder with their relative paths"""
     files = {}
@@ -19,7 +20,6 @@ def get_all_files(folder_path):
 
     return files
 
-# table that indexes all files (folders, loose images, files like doc and pdf)
 data_path_all=Path("data/Aquafin_data_cleaned")
 files_all = get_all_files(data_path_all)
 print(f"Total files found in data folder: {len(files_all)}") 
@@ -29,12 +29,14 @@ files_sorted = get_all_files(data_path)
 print(f"Total microscopic images found in sorted data folder: {len(files_sorted)}") 
 
 
+### add info about lab experiments to the matches
+
 # read excel overview sheet
 excel_path="data/Aquafin_data_cleaned/other_files/microscopie_compleet_overzicht (slims databank + oude access databank).xlsx"
 overview_df = pd.read_excel(excel_path, sheet_name="Overzicht")
 
 # read table with images that are a match to the overview table
-microscopic_match_table = pd.read_excel("microscopic_match_table.xlsx")
+microscopic_match_table = pd.read_excel("outputs/microscopic_match_table.xlsx")
 
 # unique order nrs that can be linked to images in the match_table
 # matched_orders = set(microscopic_match_table["order_nr"]) 
@@ -47,7 +49,6 @@ microscopic_match_table = pd.read_excel("microscopic_match_table.xlsx")
 #     overview_df["order_nr"].isin(matched_orders)
 # ]
 
-
 # Merge all overview information into the match table
 microscopic_match_table_extended = microscopic_match_table.merge(
     overview_df,
@@ -55,5 +56,34 @@ microscopic_match_table_extended = microscopic_match_table.merge(
     how="left"
 )
 
-
 microscopic_match_table_extended.to_excel("data/microscopic_match_table_extended.xlsx", index=False)
+microscopic_match_table_extended.to_excel("outputs/microscopic_match_table_extended.xlsx", index=False)
+
+### check duplicate matches
+
+duplicates = microscopic_match_table_extended[microscopic_match_table_extended["image_path"].duplicated(keep=False)]
+duplicates.to_excel("outputs/microscopic_match_table_extended_duplicates.xlsx", index=False)
+
+# len(duplicates) # 1384
+# dendermonde en hoogstraten is gefixt
+# verwijder rijen met galmaarden (goeie zijn opgeslaan in juiste mappen)
+# ieper is gefixt
+# lommel is fixed
+
+
+#### check matches
+
+
+# # e.g. low confidence matches
+# review_df = microscopic_match_table_extended.copy()
+
+# # add empty columns for manual annotation
+# review_df["manual_check"] = ""
+
+# for i, row in review_df.iterrows():
+#     if row["confidence"] > 0.8:
+#         review_df.at[i, "manual_check"] = "ok"
+
+
+# # save
+# review_df.to_excel("outputs/matches_review.xlsx", index=False)

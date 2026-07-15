@@ -93,15 +93,15 @@ def get_pdf_creation_date(pdf):
 def get_docx_creation_date(doc):
     return doc.core_properties.created
 
-def create_document_identifier(file_path):
+def create_document_identifier(file_path, order_nr):
     path = Path(file_path)
 
     parent = path.parent.name
     filename = path.stem
 
-    return f"{parent}_{filename}"
+    return f"{order_nr}_{parent}_{filename}"
 
-def extract_images_from_pdfs_and_docs(pdfs, docs):
+def extract_images_from_pdfs_and_docs(pdfs, docs, order_nr):
     """
     Extract images from PDF and DOCX files.
     """
@@ -131,7 +131,7 @@ def extract_images_from_pdfs_and_docs(pdfs, docs):
     all_creation_dates = []
     
     for file_path in pdfs:
-        document_id = create_document_identifier(file_path)
+        document_id = create_document_identifier(file_path, order_nr)
         extracted = []
 
         try:
@@ -173,7 +173,7 @@ def extract_images_from_pdfs_and_docs(pdfs, docs):
 
     # Process DOCX files
     for file_path in docs:
-        document_id = create_document_identifier(file_path)
+        document_id = create_document_identifier(file_path, order_nr)
         extracted = []
 
         try:
@@ -297,7 +297,7 @@ for index, row in overview_df.iterrows():
     if not images:
         if pdfs or docs:
             print("extracting images from: ", pdfs, docs)
-            images, word_pdf_original_paths, creation_dates = extract_images_from_pdfs_and_docs(pdfs, docs)
+            images, word_pdf_original_paths, creation_dates = extract_images_from_pdfs_and_docs(pdfs, docs, order_nr)
 
     images = list(dict.fromkeys(images)) # preserve order, remove duplicates
 
@@ -337,8 +337,8 @@ for index, row in overview_df.iterrows():
 match_df = pd.DataFrame(match_table)
 leftovers_df = pd.DataFrame(leftovers)
 
-match_df.to_excel("all_matches_table.xlsx", index=False)
-leftovers_df.to_excel("leftovers.xlsx", index=False)
+match_df.to_excel("outputs/all_matches_table.xlsx", index=False)
+leftovers_df.to_excel("outputs/leftovers.xlsx", index=False)
 
 # # if the match type is based on labo_nr, but the location does not match, we can consider this a low confidence match and remove it from the final match table
 filtered_match_df = match_df[
@@ -496,4 +496,4 @@ microscopic_match_table = microscopic_match_df.merge(
 )
 
 
-microscopic_match_table.to_excel("microscopic_match_table.xlsx", index=False)
+microscopic_match_table.to_excel("outputs/microscopic_match_table.xlsx", index=False)
