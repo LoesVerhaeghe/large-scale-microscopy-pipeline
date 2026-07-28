@@ -1,0 +1,114 @@
+import torch 
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
+import numpy as np
+from PIL import Image
+from os import listdir
+import matplotlib.pyplot as plt
+
+val_transform = A.Compose([
+    A.Normalize(mean=(0.485, 0.456, 0.406),
+                std=(0.229, 0.224, 0.225)),
+    ToTensorV2(),
+], additional_targets={'mask': 'mask'})
+
+def predict_full_image(model, image_np, device, val_transform=val_transform, tile_size=512, overlap=128, num_classes=3):
+    model.eval()
+
+    stride = tile_size - overlap
+    H, W, _ = image_np.shape
+
+    prob_map = np.zeros((num_classes, H, W), dtype=np.float32)
+    count_map = np.zeros((H, W), dtype=np.float32)
+
+    for y in range(0, H, stride):
+        for x in range(0, W, stride):
+
+            tile = image_np[y:y+tile_size, x:x+tile_size]
+
+            h_tile, w_tile = tile.shape[:2]
+
+            # pad if at border
+            if h_tile < tile_size or w_tile < tile_size:
+                pad_img = np.zeros((tile_size, tile_size, 3), dtype=tile.dtype)
+                pad_img[:h_tile, :w_tile] = tile
+                tile = pad_img
+
+            # transform
+            augmented = val_transform(image=tile)
+            tile_tensor = augmented["image"].unsqueeze(0).to(device)
+
+            with torch.no_grad():
+                output = model(tile_tensor)
+                probs = torch.softmax(output, dim=1)[0].cpu().numpy()
+
+            probs = probs[:, :h_tile, :w_tile]
+
+            prob_map[:, y:y+h_tile, x:x+w_tile] += probs
+            count_map[y:y+h_tile, x:x+w_tile] += 1
+
+    prob_map /= count_map
+    final_mask = np.argmax(prob_map, axis=0)
+
+    return final_mask
+
+
+torch.cuda.set_device(3) 
+torch.set_num_threads(4)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+torch.manual_seed(25)
+
+model_path = 'models/trained_SegFormer.pt'
+trained_SegFormer = torch.load(model_path, map_location=device)
+trained_SegFormer.eval()
+
+def decode_mask(mask, COLORS):
+    """Convert [H, W] class mask → RGB image"""
+    h, w = mask.shape
+    rgb = np.zeros((h, w, 3), dtype=np.uint8)
+    for cls, color in COLORS.items():
+        rgb[mask == cls] = color
+    return rgb
+
+COLORS = {
+    0: [0, 0, 0],        # background
+    1: [255, 0, 0],      # class 1 - red
+    2: [0, 255, 0],      # class 2 - green
+}
+
+images=listdir("image_segmentation/sample_images_other")
+
+#plot some infered mask for visual evaluation
+with torch.no_grad():
+    for idx in range(len(images)):
+        image = images[idx]
+        image_path="image_segmentation/sample_images_other/" + image
+        
+        image_np = np.array(Image.open(image_path).convert("RGB"))
+
+        pred_np = predict_full_image(trained_SegFormer, image_np, device, val_transform=val_transform, tile_size=512, overlap=128, num_classes=3)
+        pred_rgb = decode_mask(pred_np, COLORS)
+
+        # Plot original, predicted mask and overlay
+        plt.figure(figsize=(12,4), dpi=500)
+        # Overlay ground truth
+        plt.subplot(1,3,1)
+        plt.imshow(image_np)
+        plt.title("Image")
+        plt.axis('off')
+
+        # Overlay predicted mask
+        plt.subplot(1,3,2)
+        plt.imshow(pred_rgb)
+        plt.title("Predicted Mask")
+        plt.axis('off')
+
+        # Overlay predicted mask
+        plt.subplot(1,3,3)
+        plt.imshow(image_np)
+        plt.imshow(pred_rgb, alpha=0.4)
+        plt.title("Image+predicted mask")
+        plt.axis('off')
+
+        plt.savefig(f'image_segmentation/sample_images_masks_other/fig{idx}')
+
