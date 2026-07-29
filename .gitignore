@@ -16,10 +16,10 @@ data/
 data
 outputs/
 models/
-image_segmentation/sample_images_masks_other
-image_segmentation/sample_images_other
-image_segmentation/sample_images_masks_phasecontrast
-image_segmentation/sample_images_phasecontrast
+QIA/sample_images_masks_other
+QIA/sample_images_other
+QIA/sample_images_masks_phasecontrast
+QIA/sample_images_phasecontrast
 
 # Archive
 archive/
