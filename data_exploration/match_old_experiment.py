@@ -42,6 +42,9 @@ files_all = get_all_files(data_path_all)
 match_table = []
 leftovers = []
 
+import re
+
+
 for index, row in probleem_link_labo_order_nr.iterrows():
     # extract relevant information from the overview table
     probleem_nr = str(row['ProbleemNr'])
@@ -55,11 +58,14 @@ for index, row in probleem_link_labo_order_nr.iterrows():
     others = []
     file_names = []
 
+    # Match order/labo number only if it is not embedded in another number
+    pattern = rf"(?<!\d)({re.escape(order_nr)}|{re.escape(labo_nr)})(?!\d)"
+
     for rel_path, full_path in files_all.items():
         file_name = os.path.basename(rel_path).lower()
         if file_name in ["thumbs.db", ".ds_store"]:
             continue
-        if (order_nr in rel_path or labo_nr in rel_path in rel_path):
+        if re.search(pattern, rel_path):
             if file_name.endswith((".jpg", ".jpeg", ".png", ".tif", ".tiff")):
                 if file_name in file_names: # if image is already there, skip to avoid duplicates
                     continue
