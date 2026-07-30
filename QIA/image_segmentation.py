@@ -76,13 +76,13 @@ COLORS = {
     2: [0, 255, 0],      # class 2 - green
 }
 
-images=listdir("image_segmentation/sample_images_other")
+images=listdir("QIA/sample_images_phasecontrast")
 
 #plot some infered mask for visual evaluation
 with torch.no_grad():
     for idx in range(len(images)):
         image = images[idx]
-        image_path="image_segmentation/sample_images_other/" + image
+        image_path="QIA/sample_images_phasecontrast/" + image
         
         image_np = np.array(Image.open(image_path).convert("RGB"))
 
@@ -110,5 +110,5 @@ with torch.no_grad():
         plt.title("Image+predicted mask")
         plt.axis('off')
 
-        plt.savefig(f'image_segmentation/sample_images_masks_other/fig{idx}')
+        plt.savefig(f'QIA/sample_images_masks_phasecontrast/fig{idx}')
 
