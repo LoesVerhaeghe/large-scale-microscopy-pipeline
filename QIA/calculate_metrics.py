@@ -8,7 +8,9 @@ from PIL import Image
 import pandas as pd
 from pathlib import Path
 from skimage import measure, morphology
+from skimage.morphology import skeletonize
 import matplotlib.pyplot as plt
+import skan
 
 def decode_mask(mask, COLORS):
     """Convert [H, W] class mask → RGB image"""
@@ -38,81 +40,84 @@ for index, row in match_table_extended_ph100.iterrows():
     mask = np.array(Image.open(mask_path))
     mask_plt = decode_mask(mask, COLORS)
 
-    # Keep only flocs (mask == 1)
     floc_mask = (mask == 1)
     filament_mask = (mask == 2)
-
-    # Connected component labeling
-    min_size=mask.shape[0]*mask.shape[1]*1e-4
-    floc_mask_withoutsmallobjects = morphology.remove_small_objects(floc_mask, min_size=min_size) 
-    labeled_flocs = measure.label(floc_mask_withoutsmallobjects, connectivity=2)   #Label connected regions of an integer array
-    props = measure.regionprops(labeled_flocs) #Measure properties of labeled image regions
-
     um_per_pixel = 100/(0.114*mask.shape[1])
 
-    if len(props) > 0:
-        areas_pixels = np.array([p.area for p in props])
-        diameters_pixels = np.array([p.equivalent_diameter for p in props])
-        major_axis_pixels = np.array([p.major_axis_length for p in props])
-        minor_axis_pixels = np.array([p.minor_axis_length for p in props])
-        diameters_um = diameters_pixels * um_per_pixel
+    # calculate floc properties:
+    floc_mask_withoutsmallobjects = morphology.remove_small_objects(floc_mask, min_size=mask.shape[0]*mask.shape[1]*1e-4) # remove small objects smaller than 0.01% of the image area
+    labeled_flocs = measure.label(floc_mask_withoutsmallobjects, connectivity=2)   #Label connected regions of an integer array
+    floc_regions = measure.regionprops(labeled_flocs) #Measure properties of labeled image regions
+    
+    areas_pixels = np.array([r.area for r in floc_regions])
+    diameters_pixels = np.array([r.equivalent_diameter for r in floc_regions])
+    major_axis_pixels = np.array([r.major_axis_length for r in floc_regions])
+    minor_axis_pixels = np.array([r.minor_axis_length for r in floc_regions])
+    crofton_perimeter = np.array([r.perimeter_crofton for r in floc_regions])
+    aspect_ratios = major_axis_pixels / minor_axis_pixels
+    compactness = 4*np.pi*areas_pixels/(crofton_perimeter**2)
+    eccentricity = [r.eccentricity for r in floc_regions]
+    eq_diameters_um = diameters_pixels * um_per_pixel
+    feret_diameters = [r.feret_diameter_max for r in floc_regions] 
+    feret_diameters_um = np.array(feret_diameters) * um_per_pixel
+    micro_area = 0
+    for r in floc_regions:
+        diameter_um = r.equivalent_diameter * um_per_pixel
+        if diameter_um < 50:
+            micro_area += r.area
+    fraction_microflocs = (micro_area / (floc_mask.sum() + filament_mask.sum()))                                       
 
-        floc_results.append({
-            "index": index,
-            "n_flocs": len(props),
-            # "total_floc_area_um2": areas_pixels.sum() * um_per_pixel**2,
-            # "mean_floc_area_um2": areas_pixels.mean() * um_per_pixel**2,
-            # "median_floc_area_um2": np.median(areas_pixels) * um_per_pixel**2,
-            # "mean_floc_diameter_um": diameters_pixels.mean() * um_per_pixel,
-            # "median_floc_diameter_um": np.median(diameters_pixels) * um_per_pixel,
-            # "mean_major_axis_um": major_axis_pixels.mean() * um_per_pixel,
-            # "mean_minor_axis_um": minor_axis_pixels.mean() * um_per_pixel,
-            "n_flocs_diameter_<150um": np.sum(diameters_um < 150),
-            "n_flocs_diameter_150_500um": np.sum(
-                (diameters_um >= 150) & (diameters_um <= 500)
-            ),
-            "n_flocs_diameter_>500um": np.sum(diameters_um > 500),
-        })
+    # calculate filament properties:
 
+    skeleton = skeletonize(filament_mask)
+    if skeleton.sum() > 1:
+        graph = skan.Skeleton(skeleton)
+        total_filament_length = graph.path_lengths().sum()
     else:
-        floc_results.append({
-            "index": index,
-            "n_flocs": 0,
-            # "total_floc_area_um2": 0,
-            # "mean_floc_area_um2": np.nan,
-            # "median_floc_area_um2": np.nan,
-            # "mean_floc_diameter_um": np.nan,
-            # "median_floc_diameter_um": np.nan,
-            # "mean_major_axis_um": np.nan,
-            # "mean_minor_axis_um": np.nan,
-            "n_flocs_diameter_<150um": np.nan,
-            "n_flocs_diameter_150_500um": np.nan,
-            "n_flocs_diameter_>500um": np.nan,
-        })
+        total_filament_length = 0
 
-    # floc_mask_withoutsmallobjects_plt = decode_mask(floc_mask_withoutsmallobjects, COLORS)
+    total_filament_area = np.sum(filament_mask) 
 
-    # # Plot original, predicted mask and overlay
-    # plt.figure(figsize=(12,4), dpi=500)
-    # # Overlay ground truth
-    # plt.subplot(1,3,1)
-    # plt.imshow(image_np)
-    # plt.title("Image")
-    # plt.axis('off')
+    labeled_filaments = measure.label(skeleton)
+    filament_regions = measure.regionprops(labeled_filaments)
+    filament_lengths = []
+    for r in filament_regions:
+        length = r.area  # number of skeleton pixels
+        filament_lengths.append(length)
 
-    # # Overlay predicted mask
-    # plt.subplot(1,3,2)
-    # plt.imshow(mask_plt)
-    # plt.title("Predicted Mask")
-    # plt.axis('off')
-
-    # # Overlay predicted mask
-    # plt.subplot(1,3,3)
-    # plt.imshow(floc_mask_withoutsmallobjects_plt)
-    # plt.axis('off')
-    # print(labeled_flocs)
-
-
+    floc_results.append({
+        "index": index,
+        "n_flocs": len(floc_regions),
+        "total_floc_area_um2": areas_pixels.sum() * um_per_pixel**2 if areas_pixels.size > 0 else 0,
+        "mean_floc_area_um2": areas_pixels.mean() * um_per_pixel**2 if areas_pixels.size > 0 else 0,
+        "median_floc_area_um2": np.median(areas_pixels) * um_per_pixel**2 if areas_pixels.size > 0 else 0,
+        "mean_floc_diameter_um": eq_diameters_um.mean() if eq_diameters_um.size > 0 else 0,
+        "median_floc_diameter_um": np.median(eq_diameters_um) if eq_diameters_um.size > 0 else 0,
+        "mean_floc_crofton_perimeter_um": crofton_perimeter.mean() * um_per_pixel if crofton_perimeter.size > 0 else 0,
+        "median_floc_crofton_perimeter_um": np.median(crofton_perimeter) * um_per_pixel if crofton_perimeter.size > 0 else 0,
+        "mean_major_axis_um": major_axis_pixels.mean() * um_per_pixel if major_axis_pixels.size > 0 else 0,
+        "mean_minor_axis_um": minor_axis_pixels.mean() * um_per_pixel if minor_axis_pixels.size > 0 else 0,
+        "n_flocs_diameter_<150um": np.sum(eq_diameters_um < 150) if eq_diameters_um.size > 0 else 0,
+        "n_flocs_diameter_150_500um": np.sum(
+            (eq_diameters_um >= 150) & (eq_diameters_um <= 500)
+        ) if eq_diameters_um.size > 0 else 0,
+        "n_flocs_diameter_>500um": np.sum(eq_diameters_um > 500) if eq_diameters_um.size > 0 else 0,
+        "feret_n_flocs_diameter_<150um": np.sum(feret_diameters_um < 150) if feret_diameters_um.size > 0 else 0,
+        "feret_n_flocs_diameter_150_500um": np.sum(
+            (feret_diameters_um >= 150) & (feret_diameters_um <= 500)
+        ) if feret_diameters_um.size > 0 else 0,
+        "feret_n_flocs_diameter_>500um": np.sum(feret_diameters_um > 500) if feret_diameters_um.size > 0 else 0,
+        "fraction_microflocs": fraction_microflocs if fraction_microflocs else 0,
+        "eccentricity": np.mean(eccentricity) if eccentricity else 0,
+        "aspect_ratio": np.mean(aspect_ratios) if aspect_ratios.size > 0 else 0,
+        "compactness": np.mean(compactness) if compactness.size > 0 else 0,
+        "total_filament_length": total_filament_length* um_per_pixel if total_filament_length else 0,
+        "total_filament_area": total_filament_area* um_per_pixel**2 if total_filament_area else 0,
+        "mean_filament_length": np.mean(filament_lengths)* um_per_pixel if filament_lengths else 0,
+        "median_filament_length": np.median(filament_lengths)* um_per_pixel if filament_lengths else 0, 
+        "filament_to_floc_ratio": total_filament_area / areas_pixels.sum() if areas_pixels.size > 0 else 0,
+    
+    })
 
 
 # Convert results to dataframe
@@ -123,58 +128,5 @@ match_table_extended_ph100 = match_table_extended_ph100.join(
     floc_results_df
 )
 
-#####
-agg_dict = {
-    # sums
-    "n_flocs": "sum",
-    "n_flocs_diameter_<150um": "mean",
-    "n_flocs_diameter_150_500um": "mean",
-    "n_flocs_diameter_>500um": "mean",
 
-    # Utility measurements
-    "Klein (KLEI_VGR_3) [%]": "first",
-    "Middelgroot (MIDG_VGR_3) [%]": "first",
-    "Groot (GROO_VGR_3) [%]": "first",
-}
-
-sample_df = (
-    match_table_extended_ph100
-    .groupby("order_nr", as_index=False)
-    .agg(agg_dict)
-)
-
-
-from scipy.stats import pearsonr, spearmanr
-
-comparisons = [
-    ("Klein (KLEI_VGR_3) [%]", "n_flocs_diameter_<150um"),
-    ("Middelgroot (MIDG_VGR_3) [%]", "n_flocs_diameter_150_500um"),
-    ("Groot (GROO_VGR_3) [%]", "n_flocs_diameter_>500um"),
-]
-
-for aquafin_col, my_col in comparisons:
-
-    df = sample_df[[aquafin_col, my_col]].dropna()
-
-    pearson_r, pearson_p = pearsonr(df[aquafin_col], df[my_col])
-    spearman_rho, spearman_p = spearmanr(df[aquafin_col], df[my_col])
-
-    print(f"\n{aquafin_col} vs {my_col}")
-    print(f"Pearson  r   = {pearson_r:.3f} (p={pearson_p:.4f})")
-    print(f"Spearman rho = {spearman_rho:.3f} (p={spearman_p:.4f})")
-
-
-for utility_col, my_col in comparisons:
-
-    df = sample_df[[utility_col, my_col]].dropna()
-
-    plt.figure(figsize=(5,5))
-    plt.scatter(df[utility_col], df[my_col], alpha=0.2, s=15)
-
-    plt.xlabel(f"Aquafin")
-    plt.ylabel(f"Image analysis")
-    plt.title(f"{my_col}")
-
-    plt.grid(alpha=0.3)
-    plt.tight_layout()
-    plt.show()
+match_table_extended_ph100.to_excel("match_table_extended_ph100_masks_with_metrics.xlsx", index=False)
