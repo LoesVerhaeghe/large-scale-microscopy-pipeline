@@ -16,10 +16,8 @@ data/
 data
 outputs/
 models/
-QIA/sample_images_masks_other
-QIA/sample_images_other
-QIA/sample_images_masks_phasecontrast
-QIA/sample_images_phasecontrast
+QIA/sample_masks
+QIA/ph100_masks
 
 # Archive
 archive/
