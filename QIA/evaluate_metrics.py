@@ -5,6 +5,7 @@ import numpy as np
 
 
 match_table_w_metrics = pd.read_excel("match_table_extended_ph100_masks_with_metrics.xlsx")
+match_table_w_metrics_v2 = pd.read_excel("match_table_extended_ph100_masks_with_metrics_v2.xlsx")
 
 
 ################## check correlation between aquafin and image analysis metrics for floc size categories
@@ -88,6 +89,67 @@ comparisons = [
     ("Klein (KLEI_VGR_3) [%]", "feret_n_flocs_diameter_<150um"),
     ("Middelgroot (MIDG_VGR_3) [%]", "feret_n_flocs_diameter_150_500um"),
     ("Groot (GROO_VGR_3) [%]", "feret_n_flocs_diameter_>500um"),
+]
+
+
+for aquafin_col, my_col in comparisons:
+
+    df = sample_df[[aquafin_col, my_col]].dropna()
+
+    pearson_r, pearson_p = pearsonr(df[aquafin_col], df[my_col])
+    spearman_rho, spearman_p = spearmanr(df[aquafin_col], df[my_col])
+
+    print(f"\n{aquafin_col} vs {my_col}")
+    print(f"Pearson  r   = {pearson_r:.3f} (p={pearson_p:.4f})")
+    print(f"Spearman rho = {spearman_rho:.3f} (p={spearman_p:.4f})")
+
+    plt.figure(figsize=(5,5))
+    plt.scatter(df[aquafin_col], df[my_col], alpha=0.2, s=15)
+
+    plt.xlabel(f"Aquafin")
+    plt.ylabel(f"Image analysis")
+    plt.title(f"{my_col}")
+    plt.text(
+        0.05, 0.95,
+        f"Pearson r = {pearson_r:.3f}",
+        transform=plt.gca().transAxes,
+        verticalalignment="top",
+        bbox=dict(boxstyle="round", alpha=0.5)
+    )
+
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+
+
+### with dispersed fraction accounted for
+
+## with equivalent diameter
+agg_dict = {
+    # sums
+    "n_small_flocs": "mean",
+    "n_medium_flocs": "mean",
+    "n_large_flocs": "mean", 
+    "n_dispersed_flocs": "mean",
+
+    # Utility measurements
+    "Klein (KLEI_VGR_3) [%]": "first",
+    "Middelgroot (MIDG_VGR_3) [%]": "first",
+    "Groot (GROO_VGR_3) [%]": "first",
+    "Gedispergeerd (GEDI_VGR_3) [%]": "first"
+}
+
+sample_df = (
+    match_table_w_metrics_v2
+    .groupby("order_nr", as_index=False)
+    .agg(agg_dict)
+)
+
+comparisons = [
+    ("Klein (KLEI_VGR_3) [%]", "n_small_flocs"),
+    ("Middelgroot (MIDG_VGR_3) [%]", "n_medium_flocs"),
+    ("Groot (GROO_VGR_3) [%]", "n_large_flocs"),
+    ("Gedispergeerd (GEDI_VGR_3) [%]", "n_dispersed_flocs")
 ]
 
 
@@ -292,5 +354,52 @@ plt.text(
 )
 
 plt.grid(alpha=0.3)
+plt.tight_layout()
+plt.show()
+
+
+################## check correlation between aquafin and image analysis metrics for floc shape categories
+
+###### structuur, vorm, stevigheid
+
+agg_dict = {
+    "fraction_area_dispersed": "mean",
+
+    # Utility measurements
+    "Structuur (STRU_VMF_2)": "first", # Diffuus / Compact
+    "Vorm (VORM_VMF_2)": "first",  # Agglomeraten / Onregelmatig / Afgerond / 
+    "Stevigheid (STEV_VMF_2)": "first", #Sterk / Zwak
+}
+
+
+sample_df = (
+    match_table_w_metrics_v2
+    .groupby("order_nr", as_index=False)
+    .agg(agg_dict)
+)
+
+### Structuur
+# Keep only complete rows
+df = match_table_w_metrics_v2[["Structuur (STRU_VMF_2)", "fraction_area_dispersed"]].dropna()
+
+# Keep the desired order
+order = ["Diffuus", "Compact"]
+
+data = [
+    df.loc[df["Structuur (STRU_VMF_2)"] == cat, "fraction_area_dispersed"]
+    for cat in order
+]
+
+plt.figure(figsize=(5,5))
+
+plt.boxplot(data, tick_labels=order)
+
+for i, cat in enumerate(order, start=1):
+    y = df.loc[df["Structuur (STRU_VMF_2)"] == cat, "fraction_area_dispersed"]
+    x = np.random.normal(i, 0.05, len(y))
+    plt.scatter(x, y, alpha=0.7)
+
+plt.xlabel("Aquafin structure")
+plt.ylabel("Fraction of dispersed area")
 plt.tight_layout()
 plt.show()
