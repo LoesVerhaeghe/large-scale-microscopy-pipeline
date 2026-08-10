@@ -19,6 +19,7 @@ models/
 QIA/sample_masks
 QIA/ph100_masks
 QIA/annotate_images/to_finetune
+check_advies_tekst_outputfolders/
 
 # Archive
 archive/
