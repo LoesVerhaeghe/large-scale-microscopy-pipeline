@@ -1,14 +1,24 @@
 from pathlib import Path
 import shutil
 from docx import Document
+import pandas as pd
 
 
+df=pd.read_excel("data/microscopic_match_table_extended.xlsx")
 
-output_folder = Path("QIA/experiments_export")
+output_folder = Path("data_exploration/check_advies_tekst_outputfolders")
 output_folder.mkdir(parents=True, exist_ok=True)
 
+# Select 30 random experiments (order_nrs)
+random_orders = (
+    df["order_nr"]
+    .dropna()
+    .drop_duplicates()
+    .sample(n=30, random_state=42)
+)
 
-for order_nr, group in df.groupby("order_nr"):
+
+for order_nr, group in df[df["order_nr"].isin(random_orders)].groupby("order_nr"):
 
     # create folder for this experiment
     experiment_folder = output_folder / str(order_nr)
