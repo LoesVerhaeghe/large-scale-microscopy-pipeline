@@ -19,10 +19,10 @@ COLORS = {
     2: [0, 255, 0],      # class 2 - green
 }
 
-match_table_extended_ph100 = pd.read_excel("QIA/match_table_extended_ph100_masks.xlsx")
+match_table_extended_ph100 = pd.read_excel("QIA/match_table_extended_ph100_masks_v2.xlsx")
 
-for index, row in match_table_extended_ph100[2300:2310].iterrows():
-    mask_path = Path(row["mask_path"])
+for index, row in match_table_extended_ph100[2310:2320].iterrows():
+    mask_path = Path(row["mask_path_v2"])
     image_path=Path(row["image_path"])
     if not mask_path.exists() or not image_path.exists():
         print(f"Skipping, mask doesn't exists: {mask_path}")

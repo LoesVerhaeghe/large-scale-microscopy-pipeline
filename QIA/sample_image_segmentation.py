@@ -12,7 +12,7 @@ val_transform = A.Compose([
     ToTensorV2(),
 ], additional_targets={'mask': 'mask'})
 
-def predict_full_image(model, image_np, device, val_transform=val_transform, tile_size=512, overlap=128, num_classes=3):
+def predict_full_image(model, image_np, device, val_transform=val_transform, tile_size=1024, overlap=64, num_classes=3):
     model.eval()
 
     stride = tile_size - overlap
@@ -47,18 +47,42 @@ def predict_full_image(model, image_np, device, val_transform=val_transform, til
             prob_map[:, y:y+h_tile, x:x+w_tile] += probs
             count_map[y:y+h_tile, x:x+w_tile] += 1
 
-    prob_map /= count_map
-    final_mask = np.argmax(prob_map, axis=0)
+    prob_map /= count_map # (3,H,W)
+    #final_mask = np.argmax(prob_map, axis=0)
+    # -----------------------------------
+    # threshold-based classification
+    # -----------------------------------
 
-    return final_mask
+    bg_prob = prob_map[0]
+    floc_prob = prob_map[1]
+    filament_prob = prob_map[2]
 
+    # start with background
+    final_mask = np.zeros((H, W), dtype=np.uint8)
+
+    floc_pixels = floc_prob >= 0.7814933
+    filament_pixels = filament_prob >= 0.6403097
+    
+    # assign flocs
+    final_mask[floc_pixels] = 1
+
+    # assign filaments
+    final_mask[filament_pixels] = 2
+
+    # resolve pixels where both pass
+    both = floc_pixels & filament_pixels
+
+    final_mask[both & (floc_prob >= filament_prob)] = 1
+    final_mask[both & (filament_prob > floc_prob)] = 2
+
+    return prob_map, final_mask
 
 torch.cuda.set_device(3) 
 torch.set_num_threads(4)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.manual_seed(25)
 
-model_path = 'models/trained_SegFormer.pt'
+model_path = 'models/trained_SegFormer_noVal.pt'
 trained_SegFormer = torch.load(model_path, map_location=device)
 trained_SegFormer.eval()
 
@@ -76,18 +100,18 @@ COLORS = {
     2: [0, 255, 0],      # class 2 - green
 }
 
-images=listdir("QIA/sample_images_phasecontrast")
+images=listdir("QIA/sample_masks/sample_images_phasecontrast")
 
 #plot some infered mask for visual evaluation
 with torch.no_grad():
     for idx in range(len(images)):
         image = images[idx]
-        image_path="QIA/sample_images_phasecontrast/" + image
+        image_path="QIA/sample_masks/sample_images_phasecontrast/" + image
         
         image_np = np.array(Image.open(image_path).convert("RGB"))
 
-        pred_np = predict_full_image(trained_SegFormer, image_np, device, val_transform=val_transform, tile_size=512, overlap=128, num_classes=3)
-        pred_rgb = decode_mask(pred_np, COLORS)
+        prob_map, final_mask = predict_full_image(trained_SegFormer, image_np, device, val_transform=val_transform, tile_size=1024, overlap=64, num_classes=3)
+        pred_rgb = decode_mask(final_mask, COLORS)
 
         # Plot original, predicted mask and overlay
         plt.figure(figsize=(12,4), dpi=500)
@@ -110,5 +134,5 @@ with torch.no_grad():
         plt.title("Image+predicted mask")
         plt.axis('off')
 
-        plt.savefig(f'QIA/sample_images_masks_phasecontrast/fig{idx}')
+        #plt.savefig(f'QIA/sample_masks/sample_images_masks_other_noVal/fig{idx}')
 
