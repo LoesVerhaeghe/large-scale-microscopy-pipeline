@@ -6,7 +6,7 @@ import pandas as pd
 
 df=pd.read_excel("data/microscopic_match_table_extended.xlsx")
 
-output_folder = Path("data_exploration/check_advies_tekst_outputfolders")
+output_folder = Path("outputs/data_exploration/check_advies_tekst_outputfolders")
 output_folder.mkdir(parents=True, exist_ok=True)
 
 # Select 30 random experiments (order_nrs)

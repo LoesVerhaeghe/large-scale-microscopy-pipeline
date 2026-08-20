@@ -337,8 +337,8 @@ for index, row in overview_df.iterrows():
 match_df = pd.DataFrame(match_table)
 leftovers_df = pd.DataFrame(leftovers)
 
-match_df.to_excel("outputs/all_matches_table.xlsx", index=False)
-leftovers_df.to_excel("outputs/leftovers.xlsx", index=False)
+match_df.to_excel("outputs/data_exploration/all_matches_table.xlsx", index=False)
+leftovers_df.to_excel("outputs/data_exploration/leftovers.xlsx", index=False)
 
 # # if the match type is based on labo_nr, but the location does not match, we can consider this a low confidence match and remove it from the final match table
 filtered_match_df = match_df[
@@ -496,4 +496,4 @@ microscopic_match_table = microscopic_match_df.merge(
 )
 
 
-microscopic_match_table.to_excel("outputs/microscopic_match_table.xlsx", index=False)
+microscopic_match_table.to_excel("outputs/data_exploration/microscopic_match_table.xlsx", index=False)

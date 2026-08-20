@@ -37,7 +37,7 @@ excel_path="data/Aquafin_data_cleaned/other_files/microscopie_compleet_overzicht
 overview_df = pd.read_excel(excel_path, sheet_name="Overzicht")
 
 # read table with images that are a match to the overview table
-microscopic_match_table = pd.read_excel("outputs/microscopic_match_table.xlsx")
+microscopic_match_table = pd.read_excel("outputs/data_exploration/microscopic_match_table.xlsx")
 
 # Merge all overview information into the match table
 microscopic_match_table_extended = microscopic_match_table.merge(
@@ -74,7 +74,7 @@ microscopic_match_table_extended = microscopic_match_table_extended[~microscopic
 low_microscopic_conf = microscopic_match_table_extended[microscopic_match_table_extended["microscopic_prob"] < 0.9].copy()
 
 review_rows = []
-review_dir = Path("outputs/classifier_microscopic_review")
+review_dir = Path("outputs/data_exploration/classifier_microscopic_review")
 review_dir.mkdir(parents=True, exist_ok=True)
 
 for idx, row in low_microscopic_conf.iterrows():
@@ -116,7 +116,7 @@ matched_experiments = overview_df[
 ]
 
 microscopic_match_table_extended.to_excel("data/microscopic_match_table_extended.xlsx", index=False) # save it here for Nusret
-microscopic_match_table_extended.to_excel("outputs/microscopic_match_table_extended.xlsx", index=False)
+microscopic_match_table_extended.to_excel("outputs/data_exploration/microscopic_match_table_extended.xlsx", index=False)
 
 
 
