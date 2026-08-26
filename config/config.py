@@ -58,7 +58,7 @@ class PipelineConfig:
     norm_std: tuple = (0.229, 0.224, 0.225)
 
     # ---- device / reproducibility ----------------------------------------------
-    gpu_id: int = 3
+    gpu_id: int = 0
     num_threads: int = 4
     seed: int = 25
 
