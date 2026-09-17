@@ -12,7 +12,7 @@ same held-out experiments.
 Reads output/<run_name>/metrics.xlsx (from 03_calculate_metrics.py), joined
 against the split workbook on cfg.split_merge_col ("image_path").
 Saves confusion matrices + a summary metrics table to
-output/<run_name>/classification_models/QIA_shape_classifier/.
+output/<run_name>/classification_models/QIA_structure_classifier/.
 """
 
 from config.config import cfg
@@ -29,7 +29,7 @@ from sklearn.metrics import (
 )
 import matplotlib.pyplot as plt
 
-shape_features = [
+structure_features = [
     "n_flocs",
     "total_floc_area_um2",
     "mean_floc_area_um2",
@@ -65,7 +65,7 @@ def load_fixed_split(cfg):
     """
     Loads the authoritative train/test split and joins it against the metrics
     table. The train/test assignment comes from the split workbook, while
-    the target label and shape features come from the metrics table.
+    the target label and structure features come from the metrics table.
     """
     metrics_df = pd.read_excel(cfg.metrics_path)
 
@@ -77,7 +77,7 @@ def load_fixed_split(cfg):
     train_split["merge_image_path"] = train_split[cfg.split_merge_col].apply(normalize_image_path)
     test_split["merge_image_path"] = test_split[cfg.split_merge_col].apply(normalize_image_path)
 
-    join_cols = ["merge_image_path", *shape_features, target ]
+    join_cols = ["merge_image_path", *structure_features, target ]
 
     assert set(train_split[cfg.split_group_col]).isdisjoint(test_split[cfg.split_group_col]), \
             "train/test experiment_id sets overlap -- split workbook is not group-disjoint"
@@ -159,14 +159,14 @@ def report_feature_importance(model, features):
 # --------------------------------------------------------------------------- #
 
 def run_per_image(train_df, test_df, cfg, output_dir):
-    X_train, y_train = train_df[shape_features], train_df["target_encoded"]
-    X_test, y_test = test_df[shape_features], test_df["target_encoded"]
+    X_train, y_train = train_df[structure_features], train_df["target_encoded"]
+    X_test, y_test = test_df[structure_features], test_df["target_encoded"]
 
     model = train_rf(X_train, y_train, cfg)
     y_pred = model.predict(X_test)
 
     metrics = evaluate_and_report(y_test, y_pred, "Per-image", output_dir / "confusion_matrix_per_image.png")
-    report_feature_importance(model, shape_features)
+    report_feature_importance(model, structure_features)
     return metrics, model
 
 
@@ -175,14 +175,14 @@ def run_per_image(train_df, test_df, cfg, output_dir):
 # --------------------------------------------------------------------------- #
 
 def run_per_experiment(train_df, test_df, cfg, output_dir):
-    agg_dict = {feat: "mean" for feat in shape_features}
+    agg_dict = {feat: "mean" for feat in structure_features}
     agg_dict["target_encoded"] = "first"
 
     train_agg = train_df.groupby(cfg.split_group_col, as_index=False).agg(agg_dict)
     test_agg = test_df.groupby(cfg.split_group_col, as_index=False).agg(agg_dict)
 
-    X_train, y_train = train_agg[shape_features], train_agg["target_encoded"]
-    X_test, y_test = test_agg[shape_features], test_agg["target_encoded"]
+    X_train, y_train = train_agg[structure_features], train_agg["target_encoded"]
+    X_test, y_test = test_agg[structure_features], test_agg["target_encoded"]
     print(f"Training experiments: {len(X_train)} | Test experiments: {len(X_test)}")
 
     model = train_rf(X_train, y_train, cfg)
@@ -190,7 +190,7 @@ def run_per_experiment(train_df, test_df, cfg, output_dir):
 
     metrics = evaluate_and_report(y_test, y_pred, "Per-experiment (mean-aggregated features)", 
                                   output_dir / "confusion_matrix_per_experiment.png" )
-    report_feature_importance(model, shape_features)
+    report_feature_importance(model, structure_features)
     return metrics
 
 
@@ -211,7 +211,7 @@ def majority_vote(labels):
 
 def run_per_image_majority_vote(test_df, model, cfg, output_dir):
     """Reuses the per-image model already trained in run_per_image."""
-    X_test = test_df[shape_features]
+    X_test = test_df[structure_features]
 
     test_results = test_df.copy()
     test_results["predicted_encoded"] = model.predict(X_test)
@@ -236,7 +236,7 @@ def run_per_image_majority_vote(test_df, model, cfg, output_dir):
 
 
 def main():
-    output_dir = cfg.output_dir / "classification_models" / "QIA_shape_classifier"
+    output_dir = cfg.output_dir / "classification_models" / "QIA_structure_classifier"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     train_df, test_df = load_fixed_split(cfg)

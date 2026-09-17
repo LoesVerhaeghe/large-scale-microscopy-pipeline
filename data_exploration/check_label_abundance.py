@@ -38,24 +38,24 @@ label_columns = [
     "Structuur (STRU_VMF_2)",
     "Vorm (VORM_VMF_2)",
     "Stevigheid (STEV_VMF_2)",
-    "n_flocs",
-    "total_floc_area_um2",
-    "mean_floc_area_um2",
-    "median_floc_area_um2",
-    "mean_floc_eq_diameter_um",
-    "median_floc_eq_diameter_um",
-    "mean_floc_crofton_perimeter_um",
-    "median_floc_crofton_perimeter_um",
-    "mean_major_axis_um",
-    "mean_minor_axis_um",
-    "fraction_microflocs",
-    "eccentricity",
-    "aspect_ratio",
-    "form_factor",
-    "roundness",
-    "compactness",
-    "dispersed_area_px",
-    "fraction_area_dispersed"
+    # "n_flocs",
+    # "total_floc_area_um2",
+    # "mean_floc_area_um2",
+    # "median_floc_area_um2",
+    # "mean_floc_eq_diameter_um",
+    # "median_floc_eq_diameter_um",
+    # "mean_floc_crofton_perimeter_um",
+    # "median_floc_crofton_perimeter_um",
+    # "mean_major_axis_um",
+    # "mean_minor_axis_um",
+    # "fraction_microflocs",
+    # "eccentricity",
+    # "aspect_ratio",
+    # "form_factor",
+    # "roundness",
+    # "compactness",
+    # "dispersed_area_px",
+    # "fraction_area_dispersed"
 ]
 
 # ============================================================
@@ -314,7 +314,7 @@ for label in all_label_columns:
     # Only continue if > 10,000 images have this label
     # --------------------------------------------------------
 
-    if n_photos_total > 10_000:
+    if n_photos_total > 5_000:
 
         # ----------------------------------------------------
         # Get the corresponding image paths
