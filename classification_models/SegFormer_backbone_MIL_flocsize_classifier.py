@@ -6,13 +6,7 @@ groups every experiment's images into a "bag", encodes each image with the
 (frozen) SegFormer MiT encoder, mean-pools the per-image embeddings into one
 experiment-level feature vector, and classifies that directly.
 
-Only mean pooling is implemented (cfg.classifier_mil_arch) -- other pooling
-types (max/attention/etc.) can be added as alternative branches in
-ExperimentMILClassifier.aggregate() later without touching the rest of the
-model or training loop.
-
-Train/test assignment comes from the authoritative fixed split workbook
-(cfg.split_workbook_path), grouped by cfg.split_group_col (experiment_id).
+Train/test assignment comes from the authoritative fixed split workbook.
 
 """
 
@@ -28,18 +22,11 @@ from PIL import Image
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 
-from sklearn.metrics import (
-    accuracy_score,
-    balanced_accuracy_score,
-    classification_report,
-    confusion_matrix,
-    f1_score,
-    ConfusionMatrixDisplay,
-)
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, root_mean_squared_error
 import matplotlib.pyplot as plt
 
 
@@ -50,10 +37,10 @@ import matplotlib.pyplot as plt
 @dataclass
 class Config:
     seg_checkpoint_path: str = cfg.seg_checkpoint_path  
-    split_workbook_path: str = cfg.split_workbook_path
+    split_workbook_path: str = "/data/nvme3/loesv/analysis/vlokgrotte/vlokgroote_GroupSplit_Seed0_Phase100um.xlsx"
     match_table_path : str = cfg.match_table_path
-    split_train_sheet: str = cfg.split_train_sheet
-    split_test_sheet: str = cfg.split_test_sheet
+    split_train_sheet: str = "train"
+    split_test_sheet: str = "validation"
     split_merge_col: str = cfg.split_merge_col
     split_group_col: str = cfg.split_group_col
     norm_mean: int = cfg.norm_mean
@@ -64,8 +51,14 @@ class Config:
     num_threads: int = cfg.num_threads
 
     freeze_encoder: bool = True    # False = fine-tune everything end-to-end
-    target_col : str = "Structuur (STRU_VMF_2)"
-    classifier_class_names = ['Diffuus', 'Compact']
+    target_cols: list = field(default_factory=lambda: [
+        "Gedispergeerd (GEDI_VGR_3) [%]",
+        "Klein (KLEI_VGR_3) [%]",
+        "Middelgroot (MIDG_VGR_3) [%]",
+        "Groot (GROO_VGR_3) [%]",
+    ])
+    target_sum_tolerance: float = 1.0   # allowed deviation from 100 before warning
+
     classifier_mil_arch: str = "mean"        # pooling method; mean, max, attention
     classifier_mil_attention_hidden_dim: int = 128
     classifier_mil_chunk_size: int = 4       # images encoded per forward-pass chunk (memory management)
@@ -76,7 +69,7 @@ class Config:
     classifier_mil_weight_decay: float = 1e-5
     classifier_mil_hidden_dim: int = 256
     classifier_mil_dropout: float = 0.2
-    segformer_mil_classifier_output_dir: str =  cfg.output_dir / "classification_models" / "segformer_backbone_flocstructure_mil_classifier_MEANpool_LR1e4"
+    segformer_mil_classifier_output_dir: str =  cfg.output_dir / "classification_models" / "segformer_backbone_flocsize_mil_MEANpool_LR1e4"
             
 
 
@@ -155,14 +148,17 @@ class AttentionPooling(nn.Module):
 
         return pooled
     
-class ExperimentMILClassifier(nn.Module):
+class ExperimentMILRegressor(nn.Module):
     """
-    Multiple-instance learning classifier: encodes every image in an
-    experiment's bag, mean-pools the per-image embeddings into one
-    experiment-level feature vector, then classifies.
+    Multiple-instance learning regressor: encodes every image in an
+    experiment's bag, pools the per-image embeddings into one
+    experiment-level feature vector, then regresses onto 4 floc-size
+    fractions. A softmax + scale-by-100 output layer guarantees predictions
+    are non-negative and sum to 100, matching the target compositional
+    structure.
     """
 
-    def __init__(self, encoder: nn.Module, num_classes: int, hidden_dim: int,
+    def __init__(self, encoder: nn.Module, num_targets: int, hidden_dim: int,
                  dropout: float, freeze_encoder: bool, chunk_size: int, 
                  mil_arch: str = "mean",  attention_hidden_dim: int = 128,):
         super().__init__()
@@ -195,7 +191,7 @@ class ExperimentMILClassifier(nn.Module):
             nn.Linear(feat_channels, hidden_dim),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim, num_classes),
+            nn.Linear(hidden_dim, num_targets),
         )
 
     def _encode_chunks(self, images: torch.Tensor) -> torch.Tensor:
@@ -217,7 +213,8 @@ class ExperimentMILClassifier(nn.Module):
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         embeddings = self.encode_bag(images)
         pooled = self.aggregate(embeddings)
-        return self.head(pooled)
+        logits = self.head(pooled)
+        return torch.softmax(logits, dim=-1) * 100.0  # scale to sum to 100
 
     def train(self, mode: bool = True):
         super().train(mode)
@@ -269,9 +266,8 @@ def build_experiment_groups(df: pd.DataFrame, cfg) -> list:
     n_dropped_images = 0
 
     for exp_id, group_df in df.groupby("experiment_id", sort=True):
-        labels = group_df["target_encoded"].unique()
-        if len(labels) != 1:
-            raise ValueError(f"Inconsistent label within experiment {exp_id}: {labels}")
+        target_values = group_df[cfg.target_cols].to_numpy(dtype=float)
+        target = target_values[0]
 
         resolved_paths = group_df.apply(lambda row: _resolve_image_path(row, cfg), axis=1)
         exists_mask = resolved_paths.apply(lambda p: p.is_file())
@@ -284,7 +280,7 @@ def build_experiment_groups(df: pd.DataFrame, cfg) -> list:
 
         groups.append({
             "experiment_id": str(exp_id),
-            "label": int(labels[0]),
+            "target": target,
             "paths": valid_paths,
         })
 
@@ -293,46 +289,28 @@ def build_experiment_groups(df: pd.DataFrame, cfg) -> list:
 
     return groups
 
-def normalize_image_path(path: str) -> str:
-    """Normalize a path so it can be used as a merge key across sheets."""
-    path = str(path).replace("\\", "/")
-    marker = "Aquafin_data_cleaned/"  
-    if marker in path:
-        return path[path.index(marker):]
-    return path
-
 def load_fixed_split_groups(cfg):
-    match_table_df = pd.read_excel(cfg.match_table_path)
     train_split = pd.read_excel(cfg.split_workbook_path, sheet_name=cfg.split_train_sheet)
     test_split = pd.read_excel(cfg.split_workbook_path, sheet_name=cfg.split_test_sheet)
 
     assert set(train_split[cfg.split_group_col]).isdisjoint(test_split[cfg.split_group_col]), \
         "train/test experiment_id sets overlap -- split workbook is not group-disjoint"
 
-    # Normalize paths before merging
-    match_table_df["merge_image_path"] = match_table_df[cfg.split_merge_col].apply(normalize_image_path)
-    train_split["merge_image_path"] = train_split[cfg.split_merge_col].apply(normalize_image_path)
-    test_split["merge_image_path"] = test_split[cfg.split_merge_col].apply(normalize_image_path)
+    for name, df in (("train", train_split), ("test", test_split)):
+        n_before = len(df)
+        df.dropna(subset=cfg.target_cols, inplace=True)
+        n_dropped = n_before - len(df)
+        if n_dropped > 0:
+            print(f"Warning: dropped {n_dropped} {name} rows with missing target values")
+ 
+        row_sums = df[cfg.target_cols].sum(axis=1)
+        bad_sum_mask = (row_sums - 100.0).abs() > cfg.target_sum_tolerance
+        if bad_sum_mask.any():
+            print(f"Warning: {bad_sum_mask.sum()} {name} rows have target columns summing to "
+                  f"more than {cfg.target_sum_tolerance} away from 100 "
+                  f"(min={row_sums.min():.2f}, max={row_sums.max():.2f})")
 
-    join_cols = ["merge_image_path", cfg.target_col]
-
-    train_split = train_split.merge(match_table_df[join_cols], on="merge_image_path", how="inner")
-    test_split = test_split.merge(match_table_df[join_cols], on="merge_image_path", how="inner")
-
-    print(f"Train: matched {len(train_split)} rows to match_table_df "
-          f"({train_split[cfg.split_group_col].nunique()} experiments)")
-    print(f"Test:  matched {len(test_split)} rows to match_table_df "
-          f"({test_split[cfg.split_group_col].nunique()} experiments)")
-
-    label_to_id = {label: index for index, label in enumerate(cfg.classifier_class_names)}
-    for df in (train_split, test_split):
-        df["target_encoded"] = df[cfg.target_col].map(label_to_id)
-        n_unmapped = df["target_encoded"].isna().sum()
-        if n_unmapped > 0:
-            print(f"Warning: {n_unmapped} rows have a label not in {cfg.classifier_class_names}, dropping")
-        df.dropna(subset=["target_encoded"], inplace=True)
-        df["target_encoded"] = df["target_encoded"].astype(int)
-
+ 
     train_groups = build_experiment_groups(train_split, cfg)
     test_groups = build_experiment_groups(test_split, cfg)
 
@@ -342,17 +320,17 @@ def load_fixed_split_groups(cfg):
           f"{min(train_bag_sizes)}/{np.mean(train_bag_sizes):.1f}/{max(train_bag_sizes)}")
     print(f"Test:  {len(test_groups)} experiments, bag size min/mean/max = "
           f"{min(test_bag_sizes)}/{np.mean(test_bag_sizes):.1f}/{max(test_bag_sizes)}")
-    from collections import Counter
-
-    print("\nLabel distribution — TRAIN:")
-    train_label_counts = Counter(g["label"] for g in train_groups)
-    for label_id, count in sorted(train_label_counts.items()):
-        print(f"  {cfg.classifier_class_names[label_id]}: {count} experiments")
-
-    print("\nLabel distribution — TEST:")
-    test_label_counts = Counter(g["label"] for g in test_groups)
-    for label_id, count in sorted(test_label_counts.items()):
-        print(f"  {cfg.classifier_class_names[label_id]}: {count} experiments")
+    
+    print("\nTarget distribution — TRAIN (mean ± std, %):")
+    train_targets = np.stack([g["target"] for g in train_groups])
+    for i, name in enumerate(cfg.target_cols):
+        print(f"  {name}: {train_targets[:, i].mean():.2f} ± {train_targets[:, i].std():.2f}")
+ 
+    print("\nTarget distribution — TEST (mean ± std, %):")
+    test_targets = np.stack([g["target"] for g in test_groups])
+    for i, name in enumerate(cfg.target_cols):
+        print(f"  {name}: {test_targets[:, i].mean():.2f} ± {test_targets[:, i].std():.2f}")
+ 
     return train_groups, test_groups
 
 
@@ -372,16 +350,17 @@ class ExperimentDataset(Dataset):
             augmented = self.transform(image=image_np)
             images.append(augmented["image"])
         images = torch.stack(images)  # (n_images, C, H, W)
-        return images, group["label"], group["experiment_id"]
+        target = torch.tensor(group["target"], dtype=torch.float32)  # (4,)
+        return images, target, group["experiment_id"]
 
 
 def collate_experiments(batch):
     """Bag sizes vary per experiment, so images stay a list of tensors
     (one per experiment) rather than being stacked into one batch tensor."""
     images = [item[0] for item in batch]
-    labels = torch.tensor([item[1] for item in batch], dtype=torch.long)
+    targets = torch.stack([item[1] for item in batch])
     experiment_ids = [item[2] for item in batch]
-    return images, labels, experiment_ids
+    return images, targets, experiment_ids
 
 
 def build_transforms(cfg):
@@ -408,62 +387,79 @@ def build_transforms(cfg):
 # --------------------------------------------------------------------------- #
 # Train / eval
 # --------------------------------------------------------------------------- #
+def _compute_regression_metrics(all_preds: np.ndarray, all_targets: np.ndarray, class_names: list) -> dict:
+    """all_preds, all_targets: (n_experiments, num_targets)."""
+    metrics = {
+        "mae_overall": mean_absolute_error(all_targets, all_preds),
+        "rmse_overall": root_mean_squared_error(all_targets, all_preds),
+        "r2_overall": r2_score(all_targets, all_preds),
+    }
+    for i, name in enumerate(class_names):
+        metrics[f"mae_{name}"] = mean_absolute_error(all_targets[:, i], all_preds[:, i])
+        metrics[f"rmse_{name}"] = root_mean_squared_error(all_targets[:, i], all_preds[:, i])
+        metrics[f"r2_{name}"] = r2_score(all_targets[:, i], all_preds[:, i])
+    return metrics
 
 def evaluate(model, loader, device):
     model.eval()
-    all_preds, all_labels = [], []
+    all_preds, all_targets = [], []
     with torch.no_grad():
-        for images_list, labels, _ in loader:
-            for images, label in zip(images_list, labels):
-                logits = model(images.to(device))
-                all_preds.append(int(logits.argmax().cpu()))
-                all_labels.append(int(label))
+        for images_list, targets, _ in loader:
+            for images, target in zip(images_list, targets):
+                pred = model(images.to(device))
+                all_preds.append(pred.cpu().numpy())
+                all_targets.append(target.numpy())
+ 
+    all_preds = np.stack(all_preds)
+    all_targets = np.stack(all_targets)
+    return all_preds, all_targets
 
-    metrics = {
-        "accuracy": accuracy_score(all_labels, all_preds),
-        "f1_macro": f1_score(all_labels, all_preds, average="macro"),
-    }
-    return metrics, all_preds, all_labels
-    
 def final_evaluation_and_report(model, loader, device, cfg) -> dict:
     model.eval()
-    all_preds, all_labels = [], []
+    all_preds, all_targets = [], []
     with torch.no_grad():
-        for images_list, labels, _ in loader:
-            for images, label in zip(images_list, labels):
-                logits = model(images.to(device))
-                all_preds.append(int(logits.argmax().cpu()))
-                all_labels.append(int(label))
-    
-
-    accuracy = accuracy_score(all_labels, all_preds)
-    balanced_accuracy = balanced_accuracy_score(all_labels, all_preds)
-    f1_macro = f1_score(all_labels, all_preds, average="macro")
-    f1_weighted = f1_score(all_labels, all_preds, average="weighted")
-
+        for images_list, targets, _ in loader:
+            for images, target in zip(images_list, targets):
+                pred = model(images.to(device))
+                all_preds.append(pred.cpu().numpy())
+                all_targets.append(target.numpy())
+ 
+    all_preds = np.stack(all_preds)
+    all_targets = np.stack(all_targets)
+    final_metrics = _compute_regression_metrics(all_preds, all_targets, cfg.target_cols)
+ 
     print(f"\n--------------------- final report ----------------------------")
-    print(f"Accuracy: {accuracy:.3f} | Balanced accuracy: {balanced_accuracy:.3f}")
-    print(f"Macro F1: {f1_macro:.3f} | Weighted F1: {f1_weighted:.3f}")
-    print("\nClassification report:")
-    print(classification_report(all_labels, all_preds, target_names=cfg.classifier_class_names))
-
-    cm = confusion_matrix(all_labels, all_preds)
-    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=cfg.classifier_class_names)
-    disp.plot()
+    print(f"Overall MAE: {final_metrics['mae_overall']:.3f} | "
+          f"RMSE: {final_metrics['rmse_overall']:.3f} | R2: {final_metrics['r2_overall']:.3f}")
+    print("\nPer-class metrics:")
+    for name in cfg.target_cols:
+        print(f"  {name}: MAE={final_metrics[f'mae_{name}']:.3f}  "
+              f"RMSE={final_metrics[f'rmse_{name}']:.3f}  R2={final_metrics[f'r2_{name}']:.3f}")
+ 
+    # Parity plots (predicted vs. actual) replace the confusion matrix.
+    n_classes = len(cfg.target_cols)
+    fig, axes = plt.subplots(1, n_classes, figsize=(4 * n_classes, 4))
+    if n_classes == 1:
+        axes = [axes]
+    for i, (ax, name) in enumerate(zip(axes, cfg.target_cols)):
+        ax.scatter(all_targets[:, i], all_preds[:, i], alpha=0.6)
+        lims = [0, 100]
+        ax.plot(lims, lims, "k--", linewidth=1)
+        ax.set_xlim(lims)
+        ax.set_ylim(lims)
+        ax.set_xlabel("Actual (%)")
+        ax.set_ylabel("Predicted (%)")
+        ax.set_title(name)
     plt.tight_layout()
-    plt.savefig(cfg.segformer_mil_classifier_output_dir / "confusion_matrix.png", dpi=200)
+    plt.savefig(cfg.segformer_mil_classifier_output_dir / "parity_plots.png", dpi=200)
     plt.close()
-
-    final_metrics = {
-        "accuracy": accuracy,
-        "balanced_accuracy": balanced_accuracy,
-        "f1_macro": f1_macro,
-        "f1_weighted": f1_weighted,
-    }
+ 
     summary_df = pd.DataFrame([final_metrics])
     summary_path = cfg.segformer_mil_classifier_output_dir / "summary_metrics.csv"
     summary_df.to_csv(summary_path, index=False)
     print(f"\nSaved summary metrics to {summary_path}")
+ 
+    return final_metrics
 
 
 def main(cfg: Config):
@@ -487,9 +483,9 @@ def main(cfg: Config):
                               num_workers=cfg.classifier_num_workers, collate_fn=collate_experiments)
 
     encoder = load_pretrained_encoder(cfg, device)
-    model = ExperimentMILClassifier(
+    model = ExperimentMILRegressor(
         encoder=encoder,
-        num_classes=len(cfg.classifier_class_names),
+        num_targets=len(cfg.target_cols),
         hidden_dim=cfg.classifier_mil_hidden_dim,
         dropout=cfg.classifier_mil_dropout,
         freeze_encoder=cfg.freeze_encoder,
@@ -503,22 +499,22 @@ def main(cfg: Config):
     n_total = sum(p.numel() for p in model.parameters())
     print(f"Trainable params: {n_trainable:,} / {n_total:,}")
 
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.MSELoss()
     optimizer = torch.optim.AdamW(trainable, lr=cfg.classifier_mil_lr, weight_decay=cfg.classifier_mil_weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=cfg.classifier_mil_epochs)
 
-    best_f1 = -1.0
+    best_mae = float("inf")
     history = []
 
     for epoch in range(cfg.classifier_mil_epochs):
         model.train()
         total_loss = 0.0
 
-        for images_list, labels, _ in train_loader:
+        for images_list, targets, _ in train_loader:
             optimizer.zero_grad()
-            for images, label in zip(images_list, labels):
-                logits = model(images.to(device))
-                loss = criterion(logits.unsqueeze(0), label.to(device).unsqueeze(0))
+            for images, target in zip(images_list, targets):
+                pred  = model(images.to(device))
+                loss = criterion(pred.unsqueeze(0), target.to(device).unsqueeze(0))
                 (loss / len(images_list)).backward()
                 total_loss += loss.item()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -527,25 +523,25 @@ def main(cfg: Config):
         scheduler.step()
         train_loss = total_loss / len(train_ds)
 
-        val_metrics, val_preds, val_labels = evaluate(model, test_loader, device)
-        print(f"Epoch {epoch+1:03d}/{cfg.classifier_mil_epochs} | train loss {train_loss:.4f} | "
-              f"val acc {val_metrics['accuracy']:.4f} f1 {val_metrics['f1_macro']:.4f}")
-
+        val_preds, val_targets = evaluate(model, test_loader, device)
+        val_metrics = _compute_regression_metrics(val_preds, val_targets, cfg.target_cols)
+        print(f"Epoch {epoch+1:03d}/{cfg.classifier_mil_epochs} | train MSE {train_loss:.4f} | "
+              f"val MAE {val_metrics['mae_overall']:.4f} | val R2 {val_metrics['r2_overall']:.4f}")
+ 
         history.append({"epoch": epoch + 1, "train_loss": train_loss, "val": val_metrics})
-
-        if val_metrics["f1_macro"] > best_f1:
-            best_f1 = val_metrics["f1_macro"]
+ 
+        if val_metrics["mae_overall"] < best_mae:
+            best_mae = val_metrics["mae_overall"]
             torch.save(model.state_dict(), output_dir / "best_model.pt")
-            cm = confusion_matrix(val_labels, val_preds)
-            with open(output_dir / "best_confusion_matrix.json", "w") as f:
-                json.dump({"classes": cfg.classifier_class_names, "confusion_matrix": cm.tolist()}, f, indent=2)
-
+            np.savez(output_dir / "best_val_predictions.npz",
+                     preds=val_preds, targets=val_targets, class_names=cfg.target_cols)
+ 
     with open(output_dir / "history.json", "w") as f:
         json.dump(history, f, indent=2)
-
-    print(f"\nBest val macro-F1: {best_f1:.4f}")
+ 
+    print(f"\nBest val MAE: {best_mae:.4f}")
     print(f"Artifacts saved to: {output_dir}")
-
+ 
     best_model = model
     best_model.load_state_dict(torch.load(output_dir / "best_model.pt", map_location=device))
     final_evaluation_and_report(best_model, test_loader, device, cfg)
