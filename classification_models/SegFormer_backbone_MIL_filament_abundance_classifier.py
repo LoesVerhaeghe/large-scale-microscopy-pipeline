@@ -64,17 +64,17 @@ class Config:
 
     freeze_encoder: bool = True    # False = fine-tune everything end-to-end
     classifier_class_names = ["Matig", "Veel", "Zeer veel"]
-    classifier_mil_arch: str = "attention"        # pooling method; mean, max, attention
+    classifier_mil_arch: str = "mean"        # pooling method; mean, max, attention
     classifier_mil_attention_hidden_dim: int = 128
     classifier_mil_chunk_size: int = 4       # images encoded per forward-pass chunk (memory management)
     classifier_mil_batch_size: int = 4       # experiments per gradient-accumulation step (bag sizes vary, so this isn't a normal tensor batch)
     classifier_mil_epochs: int = 30
     classifier_num_workers: int = 2
-    classifier_mil_lr: float = 1e-4
-    classifier_mil_weight_decay: float = 1e-5
+    classifier_mil_lr: float = 1e-5
+    classifier_mil_weight_decay: float = 1e-6
     classifier_mil_hidden_dim: int = 256
     classifier_mil_dropout: float = 0.2
-    segformer_mil_classifier_output_dir: str =  cfg.output_dir / "classification_models" / "segformer_backbone_mil_classifier_ATTENTIONpool_LR1e4"
+    segformer_mil_classifier_output_dir: str =  cfg.output_dir / "classification_models" / "segformer_backbone_fil_abundance_mil_classifier_MEANpool_LR1e5"
             
 
 

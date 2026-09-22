@@ -64,8 +64,8 @@ class Config:
     num_threads: int = cfg.num_threads
 
     freeze_encoder: bool = True    # False = fine-tune everything end-to-end
-    target_col : str = "Effect op vlokstructuur (EFVS_FIG_2)"
-    classifier_class_names = ['Brugvorming', 'Weinig of geen', 'Open vlokstructuur', 'Insnoering', 'Overheersing']
+    target_col : str = "Structuur (STRU_VMF_2)"
+    classifier_class_names = ['Diffuus', 'Compact']
     classifier_mil_arch: str = "mean"        # pooling method; mean, max, attention
     classifier_mil_attention_hidden_dim: int = 128
     classifier_mil_chunk_size: int = 4       # images encoded per forward-pass chunk (memory management)
@@ -76,7 +76,7 @@ class Config:
     classifier_mil_weight_decay: float = 1e-5
     classifier_mil_hidden_dim: int = 256
     classifier_mil_dropout: float = 0.2
-    segformer_mil_classifier_output_dir: str =  cfg.output_dir / "classification_models" / "segformer_backbone_effect_fil_mil_classifier_MEANpool_LR1e4"
+    segformer_mil_classifier_output_dir: str =  cfg.output_dir / "classification_models" / "segformer_backbone_flocstructure_mil_classifier_MEANpool_LR1e4"
             
 
 

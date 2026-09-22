@@ -38,6 +38,10 @@ label_columns = [
     "Structuur (STRU_VMF_2)",
     "Vorm (VORM_VMF_2)",
     "Stevigheid (STEV_VMF_2)",
+    "Groot (GROO_VGR_3) [%]",
+    "Middelgroot (MIDG_VGR_3) [%]",
+    "Klein (KLEI_VGR_3) [%]",
+     "Gedispergeerd (GEDI_VGR_3) [%]"
     # "n_flocs",
     # "total_floc_area_um2",
     # "mean_floc_area_um2",
