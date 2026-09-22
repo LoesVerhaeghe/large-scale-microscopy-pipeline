@@ -4,8 +4,8 @@ filament-related QIA metrics:
 
   2. per-experiment    -- features mean-aggregated per experiment_id
 
-Train/test assignment comes from the authoritative fixed split workbook
-(cfg.split_workbook_path), NOT a random split -- this keeps every model
+Train/test assignment comes from the authoritative fixed split workbook,
+ NOT a random split -- this keeps every model
 (RF / ViT / SegFormer-encoder classifier / etc.) comparable on the exact
 same held-out experiments.
 
@@ -72,8 +72,8 @@ def load_fixed_split(cfg):
     """
     metrics_df = pd.read_excel(cfg.metrics_path)
 
-    train_split = pd.read_excel(cfg.split_workbook_path, sheet_name=cfg.split_train_sheet)
-    test_split = pd.read_excel(cfg.split_workbook_path, sheet_name=cfg.split_test_sheet)
+    train_split = pd.read_excel("/data/nvme3/loesv/analysis/SSCO_FIG_2_GroupSplit_Seed0.xlsx", sheet_name=cfg.split_train_sheet)
+    test_split = pd.read_excel("/data/nvme3/loesv/analysis/SSCO_FIG_2_GroupSplit_Seed0.xlsx", sheet_name=cfg.split_test_sheet)
 
     # Normalize paths before merging
     metrics_df["merge_image_path"] = metrics_df[cfg.split_merge_col].apply(normalize_image_path)

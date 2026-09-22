@@ -71,7 +71,7 @@ class PipelineConfig:
     phase_contrast_classification_path: str = "data/PhaseContrast Classifier/microscopyClassificationsV2_OCR_clean.csv"
 
     # ---- fixed train/test split ----------
-    split_workbook_path: str = "/data/nvme3/loesv/analysis/SSCO_FIG_2_GroupSplit_Seed0.xlsx"
+    #split_workbook_path: str = "/data/nvme3/loesv/analysis/SSCO_FIG_2_GroupSplit_Seed0.xlsx"
     split_train_sheet: str = "train"
     split_test_sheet: str = "test"
     split_group_col: str = "experiment_id"
