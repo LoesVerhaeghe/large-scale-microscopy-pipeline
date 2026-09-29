@@ -69,8 +69,8 @@ def load_fixed_split(cfg):
     """
     metrics_df = pd.read_excel(cfg.metrics_path)
 
-    train_split = pd.read_excel(cfg.split_workbook_path, sheet_name=cfg.split_train_sheet)
-    test_split = pd.read_excel(cfg.split_workbook_path, sheet_name=cfg.split_test_sheet)
+    train_split = pd.read_excel("/data/nvme3/loesv/analysis/vlokstructuur/EFVS_FIG_2_GroupSplit_Seed0.xlsx", sheet_name='train')
+    test_split = pd.read_excel("/data/nvme3/loesv/analysis/vlokstructuur/EFVS_FIG_2_GroupSplit_Seed0.xlsx", sheet_name='test')
 
     # Normalize paths before merging
     metrics_df["merge_image_path"] = metrics_df[cfg.split_merge_col].apply(normalize_image_path)
@@ -241,15 +241,15 @@ def main():
 
     train_df, test_df = load_fixed_split(cfg)
 
-    results = {}
-    results["per_image"], per_image_model = run_per_image(train_df, test_df, cfg, output_dir)
-    results["per_experiment"] = run_per_experiment(train_df, test_df, cfg, output_dir)
-    results["per_image_majority_vote"] = run_per_image_majority_vote(test_df, per_image_model, cfg, output_dir)
+    # results = {}
+    # results["per_image"], per_image_model = run_per_image(train_df, test_df, cfg, output_dir)
+    # results["per_experiment"] = run_per_experiment(train_df, test_df, cfg, output_dir)
+    # results["per_image_majority_vote"] = run_per_image_majority_vote(test_df, per_image_model, cfg, output_dir)
 
-    summary_df = pd.DataFrame(results).T
-    summary_path = output_dir / "summary_metrics.csv"
-    summary_df.to_csv(summary_path)
-    print(f"\nSaved summary metrics to {summary_path}")
+    # summary_df = pd.DataFrame(results).T
+    # summary_path = output_dir / "summary_metrics.csv"
+    # summary_df.to_csv(summary_path)
+    # print(f"\nSaved summary metrics to {summary_path}")
 
 
 if __name__ == "__main__":

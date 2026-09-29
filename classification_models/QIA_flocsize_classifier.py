@@ -255,13 +255,13 @@ def main():
 
     train_df, test_df = load_fixed_split(cfg)
 
-    results = {}
-    results["per_experiment"] = run_per_experiment(train_df, test_df, cfg, output_dir)
+    # results = {}
+    # results["per_experiment"] = run_per_experiment(train_df, test_df, cfg, output_dir)
 
-    summary_df = pd.DataFrame(results).T
-    summary_path = output_dir / "summary_metrics.csv"
-    summary_df.to_csv(summary_path)
-    print(f"\nSaved summary metrics to {summary_path}")
+    # summary_df = pd.DataFrame(results).T
+    # summary_path = output_dir / "summary_metrics.csv"
+    # summary_df.to_csv(summary_path)
+    # print(f"\nSaved summary metrics to {summary_path}")
 
 
 if __name__ == "__main__":
