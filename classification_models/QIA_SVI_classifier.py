@@ -1,54 +1,63 @@
 """
-Random Forest classifiers predicting technician severity labels from
-filament-related QIA metrics:
+Random Forest regressor for predicting continuous SVI values from QIA
+morphology metrics.
 
-  2. per-experiment    -- features mean-aggregated per experiment_id
+  - per-experiment: features are mean-aggregated per experiment_id
 
-Train/test assignment comes from the authoritative fixed split workbook
-(cfg.split_workbook_path), NOT a random split -- this keeps every model
-(RF / ViT / SegFormer-encoder classifier / etc.) comparable on the exact
-same held-out experiments.
+Train/test assignment comes from the fixed split workbook, not a random split,
+so the model is evaluated on the same held-out experiments as the rest of the
+pipeline.
 
 Reads output/<run_name>/metrics.xlsx (from 03_calculate_metrics.py), joined
 against the split workbook on cfg.split_merge_col ("image_path").
-Saves confusion matrices + a summary metrics table to
-output/<run_name>/classification_models/QIA_structure_classifier/.
+Saves regression summary metrics to
+output/<run_name>/classification_models/QIA_SVI_regressor/.
 """
 
 from config.config import cfg
 
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import (
-    accuracy_score,
-    balanced_accuracy_score,
-    classification_report,
-    confusion_matrix,
-    f1_score,
-    ConfusionMatrixDisplay,
+    mean_absolute_error,
+    root_mean_squared_error,
+    r2_score
 )
 import matplotlib.pyplot as plt
+import numpy as np
 
-structure_features = [
+features = [
     "n_flocs",
     "total_floc_area_um2",
     "mean_floc_area_um2",
     "median_floc_area_um2",
     "mean_floc_eq_diameter_um",
-    "median_floc_eq_diameter_um",
-    "mean_floc_crofton_perimeter_um",
-    "median_floc_crofton_perimeter_um",
-    "mean_major_axis_um",
-    "mean_minor_axis_um",
+    #"median_floc_eq_diameter_um",
+    #"mean_floc_crofton_perimeter_um",
+    #"median_floc_crofton_perimeter_um",
+    #"mean_major_axis_um",
+    #"mean_minor_axis_um",
     "fraction_microflocs",
     "eccentricity",
     "aspect_ratio",
     "form_factor",
     "roundness",
     "compactness",
-    "dispersed_area_px",
-    "fraction_area_dispersed"
+    #"dispersed_area_px",
+    "fraction_area_dispersed",
+    "n_filaments",
+    "total_filament_length_um",
+    #"total_filament_area_um2",
+    "mean_filament_length_um",
+    #"median_filament_length_um",
+    "max_filament_length_um",
+    "filament_area_fraction",
+    "filament_length_density",
+    "filament_to_floc_ratio",
+    "n_junctions",
+    "branching_density"
 ]
+
 target = "SVI"
 
 def normalize_image_path(path):
@@ -68,15 +77,19 @@ def load_fixed_split(cfg):
     """
     metrics_df = pd.read_excel(cfg.metrics_path)
 
-    train_split = pd.read_excel("/data/nvme3/loesv/analysis/vlokstructuur/EFVS_FIG_2_GroupSplit_Seed0.xlsx", sheet_name='train')
-    test_split = pd.read_excel("/data/nvme3/loesv/analysis/vlokstructuur/EFVS_FIG_2_GroupSplit_Seed0.xlsx", sheet_name='test')
+    train_split = pd.read_excel("outputs/process_timeseries/SVI_train_test_split.xlsx", sheet_name='train')
+    test_split = pd.read_excel("outputs/process_timeseries/SVI_train_test_split.xlsx", sheet_name='test')
+
+    metrics_df = metrics_df.drop_duplicates().reset_index(drop=True)
+    train_split = train_split.drop_duplicates().reset_index(drop=True)
+    test_split = test_split.drop_duplicates().reset_index(drop=True)
 
     # Normalize paths before merging
     metrics_df["merge_image_path"] = metrics_df[cfg.split_merge_col].apply(normalize_image_path)
     train_split["merge_image_path"] = train_split[cfg.split_merge_col].apply(normalize_image_path)
     test_split["merge_image_path"] = test_split[cfg.split_merge_col].apply(normalize_image_path)
 
-    join_cols = ["merge_image_path", *structure_features, target ]
+    join_cols = ["merge_image_path", *features ]
 
     assert set(train_split[cfg.split_group_col]).isdisjoint(test_split[cfg.split_group_col]), \
             "train/test experiment_id sets overlap -- split workbook is not group-disjoint"
@@ -84,66 +97,37 @@ def load_fixed_split(cfg):
     train_df = train_split.merge(metrics_df[join_cols], on="merge_image_path", how="inner")
     test_df = test_split.merge(metrics_df[join_cols], on="merge_image_path", how="inner")
 
-
     print(f"Train: {len(train_split)} rows in split workbook -> {len(train_df)} matched to metrics "
           f"({train_df[cfg.split_group_col].nunique()} experiments)")
     print(f"Test:  {len(test_split)} rows in split workbook -> {len(test_df)} matched to metrics "
           f"({test_df[cfg.split_group_col].nunique()} experiments)")
 
-    label_to_id = {label: index for index, label in enumerate(classifier_class_names)}
-
-    train_df["target_encoded"] = train_df[target].map(label_to_id)
-    test_df["target_encoded"] = test_df[target].map(label_to_id)
-
-    n_unmapped = train_df["target_encoded"].isna().sum() + test_df["target_encoded"].isna().sum()
-    if n_unmapped > 0:
-        print(f"Warning: {n_unmapped} rows have a label not in cfg.classifier_labels, dropping them")
-        train_df = train_df.dropna(subset=["target_encoded"])
-        test_df = test_df.dropna(subset=["target_encoded"])
-
-    train_df["target_encoded"] = train_df["target_encoded"].astype(int)
-    test_df["target_encoded"] = test_df["target_encoded"].astype(int)
-
     return train_df, test_df
 
 
-def train_rf(X_train, y_train, cfg) -> RandomForestClassifier:
-    model = RandomForestClassifier(
-        n_estimators=100,
-        class_weight="balanced",
+def train_rf(X_train, y_train, cfg) -> RandomForestRegressor:
+    model = RandomForestRegressor(
+        n_estimators=1000,
+        criterion="squared_error",
         random_state=cfg.seed,
         n_jobs=2,
     )
     model.fit(X_train, y_train)
     return model
 
-
-def evaluate_and_report(y_true, y_pred, title: str, out_path) -> dict:
-    accuracy = accuracy_score(y_true, y_pred)
-    balanced_accuracy = balanced_accuracy_score(y_true, y_pred)
-    f1_macro = f1_score(y_true, y_pred, average="macro")
-    f1_weighted = f1_score(y_true, y_pred, average="weighted")
-
-    print(f"\n---------------------------- {title} ----------------------------")
-    print(f"Accuracy: {accuracy:.3f} | Balanced accuracy: {balanced_accuracy:.3f}")
-    print(f"Macro F1: {f1_macro:.3f} | Weighted F1: {f1_weighted:.3f}")
-    print("\nClassification report:")
-    print(classification_report(y_true, y_pred, target_names=classifier_class_names))
-
-    cm = confusion_matrix(y_true, y_pred)
-    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=classifier_class_names)
-    disp.plot()
-    plt.title(title)
-    plt.tight_layout()
-    plt.savefig(out_path, dpi=200)
-    plt.close()
-
-    return {
-        "accuracy": accuracy,
-        "balanced_accuracy": balanced_accuracy,
-        "f1_macro": f1_macro,
-        "f1_weighted": f1_weighted,
-    }
+def evaluate_and_report(y_true, y_pred):
+    y_true = np.asarray(y_true, dtype=float)
+    y_pred = np.asarray(y_pred, dtype=float)
+    metrics = {}
+ 
+    metrics["Total_MAE"] = mean_absolute_error(y_true, y_pred)
+    metrics["Total_RMSE"] = root_mean_squared_error(y_true, y_pred)
+    metrics["Total_R2"] = r2_score(y_true, y_pred)
+ 
+    print(f"Total MAE: {metrics['Total_MAE']:.2f} mL/g")
+    print(f"Total RMSE: {metrics['Total_RMSE']:.2f} mL/g")
+    print(f"Total R²: {metrics['Total_R2']:.3f}")
+    return metrics
 
 
 def report_feature_importance(model, features):
@@ -154,102 +138,42 @@ def report_feature_importance(model, features):
 
 
 # --------------------------------------------------------------------------- #
-# Variant 1: per-image
-# --------------------------------------------------------------------------- #
-
-def run_per_image(train_df, test_df, cfg, output_dir):
-    X_train, y_train = train_df[structure_features], train_df["target_encoded"]
-    X_test, y_test = test_df[structure_features], test_df["target_encoded"]
-
-    model = train_rf(X_train, y_train, cfg)
-    y_pred = model.predict(X_test)
-
-    metrics = evaluate_and_report(y_test, y_pred, "Per-image", output_dir / "confusion_matrix_per_image.png")
-    report_feature_importance(model, structure_features)
-    return metrics, model
-
-
-# --------------------------------------------------------------------------- #
 # Variant 2: per-experiment (mean-aggregated features)
 # --------------------------------------------------------------------------- #
 
-def run_per_experiment(train_df, test_df, cfg, output_dir):
-    agg_dict = {feat: "mean" for feat in structure_features}
-    agg_dict["target_encoded"] = "first"
+def run_per_experiment(train_df, test_df, cfg):
+    agg_dict = {feat: "mean" for feat in features}
+    agg_dict[target] = "first"
 
     train_agg = train_df.groupby(cfg.split_group_col, as_index=False).agg(agg_dict)
     test_agg = test_df.groupby(cfg.split_group_col, as_index=False).agg(agg_dict)
 
-    X_train, y_train = train_agg[structure_features], train_agg["target_encoded"]
-    X_test, y_test = test_agg[structure_features], test_agg["target_encoded"]
+    X_train, y_train = train_agg[features], train_agg[target]
+    X_test, y_test = test_agg[features], test_agg[target]
     print(f"Training experiments: {len(X_train)} | Test experiments: {len(X_test)}")
 
     model = train_rf(X_train, y_train, cfg)
     y_pred = model.predict(X_test)
 
-    metrics = evaluate_and_report(y_test, y_pred, "Per-experiment (mean-aggregated features)", 
-                                  output_dir / "confusion_matrix_per_experiment.png" )
-    report_feature_importance(model, structure_features)
+    metrics = evaluate_and_report(y_test, y_pred=y_pred)
+    report_feature_importance(model, features)
     return metrics
 
-
-# --------------------------------------------------------------------------- #
-# Variant 3: per-image trained, majority-vote aggregated to experiment level
-# --------------------------------------------------------------------------- #
-
-def majority_vote(labels):
-    """Most frequent label in a group. Ties are broken by picking the
-    higher class, so it stays consistent with a bias toward not
-    under-calling severity. Change to min(...) if you'd rather break
-    ties conservatively instead."""
-    counts = labels.value_counts()
-    top_count = counts.max()
-    tied_labels = counts[counts == top_count].index
-    return max(tied_labels)
-
-
-def run_per_image_majority_vote(test_df, model, cfg, output_dir):
-    """Reuses the per-image model already trained in run_per_image."""
-    X_test = test_df[structure_features]
-
-    test_results = test_df.copy()
-    test_results["predicted_encoded"] = model.predict(X_test)
-
-    experiment_pred = (
-        test_results.groupby(cfg.split_group_col)["predicted_encoded"]
-        .apply(majority_vote)
-        .rename("predicted_experiment_label")
-    )
-    experiment_true = (
-        test_results.groupby(cfg.split_group_col)["target_encoded"]
-        .first()
-        .rename("true_experiment_label")
-    )
-    experiment_eval = pd.concat([experiment_true, experiment_pred], axis=1)
-
-    metrics = evaluate_and_report(
-        experiment_eval["true_experiment_label"], experiment_eval["predicted_experiment_label"],
-        "Per-image trained, majority-vote aggregated to experiment",
-        output_dir / "confusion_matrix_per_image_majority_vote.png")
-    return metrics
 
 
 def main():
-    output_dir = cfg.output_dir / "classification_models" / "QIA_structure_classifier"
+    output_dir = cfg.output_dir / "classification_models" / "QIA_SVI_regressor"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     train_df, test_df = load_fixed_split(cfg)
 
-    # results = {}
-    # results["per_image"], per_image_model = run_per_image(train_df, test_df, cfg, output_dir)
-    # results["per_experiment"] = run_per_experiment(train_df, test_df, cfg, output_dir)
-    # results["per_image_majority_vote"] = run_per_image_majority_vote(test_df, per_image_model, cfg, output_dir)
+    results = {}
+    results["per_experiment"] = run_per_experiment(train_df, test_df, cfg)
 
-    # summary_df = pd.DataFrame(results).T
-    # summary_path = output_dir / "summary_metrics.csv"
-    # summary_df.to_csv(summary_path)
-    # print(f"\nSaved summary metrics to {summary_path}")
-
+    summary_df = pd.DataFrame(results).T
+    summary_path = output_dir / "summary_metrics.csv"
+    summary_df.to_csv(summary_path)
+    print(f"\nSaved summary metrics to {summary_path}")
 
 if __name__ == "__main__":
     main()
