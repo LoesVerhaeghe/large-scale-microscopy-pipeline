@@ -69,15 +69,15 @@ def load_fixed_split(cfg):
     """
     metrics_df = pd.read_excel(cfg.metrics_path)
 
-    train_split = pd.read_excel("/data/nvme3/loesv/analysis/vlokstructuur/EFVS_FIG_2_GroupSplit_Seed0.xlsx", sheet_name='train')
-    test_split = pd.read_excel("/data/nvme3/loesv/analysis/vlokstructuur/EFVS_FIG_2_GroupSplit_Seed0.xlsx", sheet_name='test')
+    train_split = pd.read_excel("outputs/data_exploration/flocstructure_train_test_split.xlsx", sheet_name='train')
+    test_split = pd.read_excel("outputs/data_exploration/flocstructure_train_test_split.xlsx", sheet_name='test')
 
     # Normalize paths before merging
     metrics_df["merge_image_path"] = metrics_df[cfg.split_merge_col].apply(normalize_image_path)
     train_split["merge_image_path"] = train_split[cfg.split_merge_col].apply(normalize_image_path)
     test_split["merge_image_path"] = test_split[cfg.split_merge_col].apply(normalize_image_path)
 
-    join_cols = ["merge_image_path", *structure_features, target ]
+    join_cols = ["merge_image_path", *structure_features ]
 
     assert set(train_split[cfg.split_group_col]).isdisjoint(test_split[cfg.split_group_col]), \
             "train/test experiment_id sets overlap -- split workbook is not group-disjoint"
@@ -85,26 +85,17 @@ def load_fixed_split(cfg):
     train_df = train_split.merge(metrics_df[join_cols], on="merge_image_path", how="inner")
     test_df = test_split.merge(metrics_df[join_cols], on="merge_image_path", how="inner")
 
-
     print(f"Train: {len(train_split)} rows in split workbook -> {len(train_df)} matched to metrics "
           f"({train_df[cfg.split_group_col].nunique()} experiments)")
     print(f"Test:  {len(test_split)} rows in split workbook -> {len(test_df)} matched to metrics "
           f"({test_df[cfg.split_group_col].nunique()} experiments)")
 
-    label_to_id = {label: index for index, label in enumerate(classifier_class_names)}
-
-    train_df["target_encoded"] = train_df[target].map(label_to_id)
-    test_df["target_encoded"] = test_df[target].map(label_to_id)
-
-    n_unmapped = train_df["target_encoded"].isna().sum() + test_df["target_encoded"].isna().sum()
+    n_unmapped = train_df["label_id"].isna().sum() + test_df["label_id"].isna().sum()
     if n_unmapped > 0:
         print(f"Warning: {n_unmapped} rows have a label not in cfg.classifier_labels, dropping them")
-        train_df = train_df.dropna(subset=["target_encoded"])
-        test_df = test_df.dropna(subset=["target_encoded"])
-
-    train_df["target_encoded"] = train_df["target_encoded"].astype(int)
-    test_df["target_encoded"] = test_df["target_encoded"].astype(int)
-
+        train_df = train_df.dropna(subset=["label_id"])
+        test_df = test_df.dropna(subset=["label_id"])
+        
     return train_df, test_df
 
 
@@ -158,16 +149,16 @@ def report_feature_importance(model, features):
 # Variant 1: per-image
 # --------------------------------------------------------------------------- #
 
-def run_per_image(train_df, test_df, cfg, output_dir):
-    X_train, y_train = train_df[structure_features], train_df["target_encoded"]
-    X_test, y_test = test_df[structure_features], test_df["target_encoded"]
+# def run_per_image(train_df, test_df, cfg, output_dir):
+#     X_train, y_train = train_df[structure_features], train_df["label_id"]
+#     X_test, y_test = test_df[structure_features], test_df["label_id"]
 
-    model = train_rf(X_train, y_train, cfg)
-    y_pred = model.predict(X_test)
+#     model = train_rf(X_train, y_train, cfg)
+#     y_pred = model.predict(X_test)
 
-    metrics = evaluate_and_report(y_test, y_pred, "Per-image", output_dir / "confusion_matrix_per_image.png")
-    report_feature_importance(model, structure_features)
-    return metrics, model
+#     metrics = evaluate_and_report(y_test, y_pred, "Per-image", output_dir / "confusion_matrix_per_image.png")
+#     report_feature_importance(model, structure_features)
+#     return metrics, model
 
 
 # --------------------------------------------------------------------------- #
@@ -176,13 +167,13 @@ def run_per_image(train_df, test_df, cfg, output_dir):
 
 def run_per_experiment(train_df, test_df, cfg, output_dir):
     agg_dict = {feat: "mean" for feat in structure_features}
-    agg_dict["target_encoded"] = "first"
+    agg_dict["label_id"] = "first"
 
     train_agg = train_df.groupby(cfg.split_group_col, as_index=False).agg(agg_dict)
     test_agg = test_df.groupby(cfg.split_group_col, as_index=False).agg(agg_dict)
 
-    X_train, y_train = train_agg[structure_features], train_agg["target_encoded"]
-    X_test, y_test = test_agg[structure_features], test_agg["target_encoded"]
+    X_train, y_train = train_agg[structure_features], train_agg["label_id"]
+    X_test, y_test = test_agg[structure_features], test_agg["label_id"]
     print(f"Training experiments: {len(X_train)} | Test experiments: {len(X_test)}")
 
     model = train_rf(X_train, y_train, cfg)
@@ -198,41 +189,41 @@ def run_per_experiment(train_df, test_df, cfg, output_dir):
 # Variant 3: per-image trained, majority-vote aggregated to experiment level
 # --------------------------------------------------------------------------- #
 
-def majority_vote(labels):
-    """Most frequent label in a group. Ties are broken by picking the
-    higher class, so it stays consistent with a bias toward not
-    under-calling severity. Change to min(...) if you'd rather break
-    ties conservatively instead."""
-    counts = labels.value_counts()
-    top_count = counts.max()
-    tied_labels = counts[counts == top_count].index
-    return max(tied_labels)
+# def majority_vote(labels):
+#     """Most frequent label in a group. Ties are broken by picking the
+#     higher class, so it stays consistent with a bias toward not
+#     under-calling severity. Change to min(...) if you'd rather break
+#     ties conservatively instead."""
+#     counts = labels.value_counts()
+#     top_count = counts.max()
+#     tied_labels = counts[counts == top_count].index
+#     return max(tied_labels)
 
 
-def run_per_image_majority_vote(test_df, model, cfg, output_dir):
-    """Reuses the per-image model already trained in run_per_image."""
-    X_test = test_df[structure_features]
+# def run_per_image_majority_vote(test_df, model, cfg, output_dir):
+#     """Reuses the per-image model already trained in run_per_image."""
+#     X_test = test_df[structure_features]
 
-    test_results = test_df.copy()
-    test_results["predicted_encoded"] = model.predict(X_test)
+#     test_results = test_df.copy()
+#     test_results["predicted_encoded"] = model.predict(X_test)
 
-    experiment_pred = (
-        test_results.groupby(cfg.split_group_col)["predicted_encoded"]
-        .apply(majority_vote)
-        .rename("predicted_experiment_label")
-    )
-    experiment_true = (
-        test_results.groupby(cfg.split_group_col)["target_encoded"]
-        .first()
-        .rename("true_experiment_label")
-    )
-    experiment_eval = pd.concat([experiment_true, experiment_pred], axis=1)
+#     experiment_pred = (
+#         test_results.groupby(cfg.split_group_col)["predicted_encoded"]
+#         .apply(majority_vote)
+#         .rename("predicted_experiment_label")
+#     )
+#     experiment_true = (
+#         test_results.groupby(cfg.split_group_col)["label_id"]
+#         .first()
+#         .rename("true_experiment_label")
+#     )
+#     experiment_eval = pd.concat([experiment_true, experiment_pred], axis=1)
 
-    metrics = evaluate_and_report(
-        experiment_eval["true_experiment_label"], experiment_eval["predicted_experiment_label"],
-        "Per-image trained, majority-vote aggregated to experiment",
-        output_dir / "confusion_matrix_per_image_majority_vote.png")
-    return metrics
+#     metrics = evaluate_and_report(
+#         experiment_eval["true_experiment_label"], experiment_eval["predicted_experiment_label"],
+#         "Per-image trained, majority-vote aggregated to experiment",
+#         output_dir / "confusion_matrix_per_image_majority_vote.png")
+#     return metrics
 
 
 def main():
@@ -241,15 +232,15 @@ def main():
 
     train_df, test_df = load_fixed_split(cfg)
 
-    # results = {}
+    results = {}
     # results["per_image"], per_image_model = run_per_image(train_df, test_df, cfg, output_dir)
-    # results["per_experiment"] = run_per_experiment(train_df, test_df, cfg, output_dir)
+    results["per_experiment"] = run_per_experiment(train_df, test_df, cfg, output_dir)
     # results["per_image_majority_vote"] = run_per_image_majority_vote(test_df, per_image_model, cfg, output_dir)
 
-    # summary_df = pd.DataFrame(results).T
-    # summary_path = output_dir / "summary_metrics.csv"
-    # summary_df.to_csv(summary_path)
-    # print(f"\nSaved summary metrics to {summary_path}")
+    summary_df = pd.DataFrame(results).T
+    summary_path = output_dir / "summary_metrics.csv"
+    summary_df.to_csv(summary_path)
+    print(f"\nSaved summary metrics to {summary_path}")
 
 
 if __name__ == "__main__":

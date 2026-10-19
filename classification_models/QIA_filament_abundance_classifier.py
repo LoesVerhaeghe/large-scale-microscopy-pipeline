@@ -129,9 +129,9 @@ def evaluate_and_report(y_true, y_pred, title: str, out_path) -> dict:
     print(classification_report(y_true, y_pred, target_names=classifier_class_names))
 
     cm = confusion_matrix(y_true, y_pred)
-    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=classifier_class_names)
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["Moderate", "Many", "Very many"])
     disp.plot()
-    plt.title(title)
+    #plt.title(title)
     plt.tight_layout()
     plt.savefig(out_path, dpi=200)
     plt.close()

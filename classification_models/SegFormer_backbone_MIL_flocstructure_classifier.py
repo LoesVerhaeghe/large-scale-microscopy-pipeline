@@ -50,11 +50,9 @@ import matplotlib.pyplot as plt
 @dataclass
 class Config:
     seg_checkpoint_path: str = cfg.seg_checkpoint_path  
-    split_workbook_path: str = cfg.split_workbook_path
-    match_table_path : str = cfg.match_table_path
-    split_train_sheet: str = cfg.split_train_sheet
-    split_test_sheet: str = cfg.split_test_sheet
-    split_merge_col: str = cfg.split_merge_col
+    split_workbook_path: str = "outputs/data_exploration/flocstructure_train_test_split.xlsx"
+    split_train_sheet: str = "train"
+    split_test_sheet: str = "test"
     split_group_col: str = cfg.split_group_col
     norm_mean: int = cfg.norm_mean
     norm_std: int = cfg.norm_std
@@ -250,13 +248,6 @@ def load_pretrained_encoder(cfg, device: torch.device) -> nn.Module:
 # Data
 # --------------------------------------------------------------------------- #
 
-def _resolve_image_path(row, cfg) -> Path:
-    """Prefer resolved_image_path (server-local); fall back to image_path."""
-    resolved = Path(row["resolved_image_path" ])
-    if resolved.is_file():
-        return resolved
-    return Path(row["image_path"])
-
 def build_experiment_groups(df: pd.DataFrame, cfg) -> list:
     """
     Groups a (label-encoded) split dataframe by experiment_id into bags:
@@ -269,11 +260,11 @@ def build_experiment_groups(df: pd.DataFrame, cfg) -> list:
     n_dropped_images = 0
 
     for exp_id, group_df in df.groupby("experiment_id", sort=True):
-        labels = group_df["target_encoded"].unique()
+        labels = group_df["label_id"].unique()
         if len(labels) != 1:
             raise ValueError(f"Inconsistent label within experiment {exp_id}: {labels}")
 
-        resolved_paths = group_df.apply(lambda row: _resolve_image_path(row, cfg), axis=1)
+        resolved_paths = group_df.apply(lambda row: Path(row["image_path"]), axis=1)
         exists_mask = resolved_paths.apply(lambda p: p.is_file())
         n_dropped_images += int((~exists_mask).sum())
         valid_paths = resolved_paths[exists_mask].tolist()
@@ -302,36 +293,11 @@ def normalize_image_path(path: str) -> str:
     return path
 
 def load_fixed_split_groups(cfg):
-    match_table_df = pd.read_excel(cfg.match_table_path)
     train_split = pd.read_excel(cfg.split_workbook_path, sheet_name=cfg.split_train_sheet)
     test_split = pd.read_excel(cfg.split_workbook_path, sheet_name=cfg.split_test_sheet)
 
     assert set(train_split[cfg.split_group_col]).isdisjoint(test_split[cfg.split_group_col]), \
         "train/test experiment_id sets overlap -- split workbook is not group-disjoint"
-
-    # Normalize paths before merging
-    match_table_df["merge_image_path"] = match_table_df[cfg.split_merge_col].apply(normalize_image_path)
-    train_split["merge_image_path"] = train_split[cfg.split_merge_col].apply(normalize_image_path)
-    test_split["merge_image_path"] = test_split[cfg.split_merge_col].apply(normalize_image_path)
-
-    join_cols = ["merge_image_path", cfg.target_col]
-
-    train_split = train_split.merge(match_table_df[join_cols], on="merge_image_path", how="inner")
-    test_split = test_split.merge(match_table_df[join_cols], on="merge_image_path", how="inner")
-
-    print(f"Train: matched {len(train_split)} rows to match_table_df "
-          f"({train_split[cfg.split_group_col].nunique()} experiments)")
-    print(f"Test:  matched {len(test_split)} rows to match_table_df "
-          f"({test_split[cfg.split_group_col].nunique()} experiments)")
-
-    label_to_id = {label: index for index, label in enumerate(cfg.classifier_class_names)}
-    for df in (train_split, test_split):
-        df["target_encoded"] = df[cfg.target_col].map(label_to_id)
-        n_unmapped = df["target_encoded"].isna().sum()
-        if n_unmapped > 0:
-            print(f"Warning: {n_unmapped} rows have a label not in {cfg.classifier_class_names}, dropping")
-        df.dropna(subset=["target_encoded"], inplace=True)
-        df["target_encoded"] = df["target_encoded"].astype(int)
 
     train_groups = build_experiment_groups(train_split, cfg)
     test_groups = build_experiment_groups(test_split, cfg)
