@@ -4,7 +4,7 @@ import pandas as pd
 import os 
 
 # read excel overview sheet
-excel_path="data/Aquafin_data_cleaned/other_files/microscopie_compleet_overzicht (slims databank + oude access databank).xlsx"
+excel_path="data/Aquafin data (vertrouwelijk NDA)-ORIGINAL/microscopie_compleet_overzicht aanvulling tot september 2026.xlsx"
 overview_df = pd.read_excel(excel_path, sheet_name="Overzicht")
 
 def get_all_files(folder_path):
@@ -21,18 +21,21 @@ def get_all_files(folder_path):
             files[str(rel_path)] = full_path # Store the full path for later use (e.g., to get file size)
     return files
 
-# check how many images we have 
-data_path=Path("data/Aquafin data (Sorted_Nusret)")
+# # check how many images we have 
+# data_path=Path("data/Aquafin data (Sorted_Nusret)")
 
-files_sorted = get_all_files(data_path)
-print(f"Total images found in sorted data folder: {len(files_sorted)}") # 44 219
+# files_sorted = get_all_files(data_path)
+# print(f"Total images found in sorted data folder: {len(files_sorted)}") # 44 219
 
-# table that indexes all files (folders, loose images, files like doc and pdf)
-data_path_all=Path("data/Aquafin_data_cleaned")
+# # table that indexes all files (folders, loose images, files like doc and pdf)
+# data_path_all=Path("data/Aquafin_data_cleaned")
 
-files_all = get_all_files(data_path_all)
+# files_all = get_all_files(data_path_all)
+# print(f"Total files found in data folder: {len(files_all)}") 
+
+data_path_original = Path("data/Aquafin data (vertrouwelijk NDA)-ORIGINAL")
+files_all = get_all_files(data_path_original)
 print(f"Total files found in data folder: {len(files_all)}") 
-
 
 # table that links files to the overview table, based on filename and folder structure, and add column for confidence of match
 
@@ -217,7 +220,7 @@ leftovers = []
 for index, row in overview_df.iterrows():
     # extract relevant information from the overview table
     order_nr = str(row['order_nr'])
-    labo_nr = str(row['labo_nummer'])
+    #labo_nr = str(row['labo_nummer'])
     sample_barcode = str(row['sample_barcode'])
     location = str(row['zuiveringsgebied'])
     experiment_date = pd.to_datetime(str(row['datum_monstername']), format="%Y-%m-%d %H:%M:%S")
@@ -232,7 +235,8 @@ for index, row in overview_df.iterrows():
         file_name = os.path.basename(rel_path).lower()
         if file_name in ["thumbs.db", ".ds_store"]:
             continue
-        if (order_nr in rel_path or labo_nr in rel_path or sample_barcode in rel_path):
+        #if (order_nr in rel_path or labo_nr in rel_path or sample_barcode in rel_path):
+        if (order_nr in rel_path or sample_barcode in rel_path):
             if file_name.endswith((".jpg", ".jpeg", ".png", ".tif", ".tiff")):
                 if file_name in file_names: # if image is already there, skip to avoid duplicates
                     continue
@@ -280,8 +284,8 @@ for index, row in overview_df.iterrows():
             match_type = "order_nr"
         elif sample_barcode in img:
             match_type = "sample_barcode"
-        elif labo_nr in img:
-            match_type = "labo_nr"
+        # elif labo_nr in img:
+        #     match_type = "labo_nr"
         match_table.append({
                 "order_nr": order_nr,
                 "image_path": img,
@@ -323,8 +327,8 @@ for index, row in overview_df.iterrows():
                 match_type = "order_nr"
             elif sample_barcode in word_pdf_original_paths[i]:
                 match_type = "sample_barcode"
-            elif labo_nr in word_pdf_original_paths[i]:
-                match_type = "labo_nr"
+            # elif labo_nr in word_pdf_original_paths[i]:
+            #     match_type = "labo_nr"
             match_table.append({
                     "order_nr": order_nr,
                     "image_path": img,
@@ -337,20 +341,25 @@ for index, row in overview_df.iterrows():
 match_df = pd.DataFrame(match_table)
 leftovers_df = pd.DataFrame(leftovers)
 
-match_df.to_excel("outputs/data_exploration/all_matches_table.xlsx", index=False)
-leftovers_df.to_excel("outputs/data_exploration/leftovers.xlsx", index=False)
+#match_df.to_excel("outputs/data_exploration/all_matches_table.xlsx", index=False)
+#leftovers_df.to_excel("outputs/data_exploration/leftovers.xlsx", index=False)
 
 # # if the match type is based on labo_nr, but the location does not match, we can consider this a low confidence match and remove it from the final match table
+# filtered_match_df = match_df[
+#     ~(
+#         (match_df["match_type"] == "labo_nr") &
+#         (match_df["location_match"] == 0)
+#     )
+# ]
+
+# filtered_match_df = filtered_match_df[
+#     ~(filtered_match_df["day_diff"] > 14)
+# ]
+
 filtered_match_df = match_df[
-    ~(
-        (match_df["match_type"] == "labo_nr") &
-        (match_df["location_match"] == 0)
-    )
+    ~(match_df["day_diff"] > 14)
 ]
 
-filtered_match_df = filtered_match_df[
-    ~(filtered_match_df["day_diff"] > 14)
-]
 
 
 #### classify matched images based on classifier model Nusret: microscopic vs non microscopic images
@@ -496,4 +505,4 @@ microscopic_match_table = microscopic_match_df.merge(
 )
 
 
-microscopic_match_table.to_excel("outputs/data_exploration/microscopic_match_table.xlsx", index=False)
+microscopic_match_table.to_excel("outputs/data_exploration/microscopic_match_table_since_april26.xlsx", index=False)
