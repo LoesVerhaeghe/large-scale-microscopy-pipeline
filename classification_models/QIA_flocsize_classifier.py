@@ -88,8 +88,8 @@ def load_fixed_split(cfg):
     """
     metrics_df = pd.read_excel(cfg.metrics_path)
 
-    train_split = pd.read_excel("/data/nvme3/loesv/analysis/vlokgrotte/vlokgroote_GroupSplit_Seed0_Phase100um.xlsx", sheet_name='train')
-    test_split = pd.read_excel("/data/nvme3/loesv/analysis/vlokgrotte/vlokgroote_GroupSplit_Seed0_Phase100um.xlsx", sheet_name='validation')
+    train_split = pd.read_excel("/data/nvme3/loesv/analysis/train_test_splits/flocsizes_train_test_split.xlsx", sheet_name='train')
+    test_split = pd.read_excel("/data/nvme3/loesv/analysis/train_test_splits/flocsizes_train_test_split.xlsx", sheet_name='test')
 
     # Normalize paths before merging
     metrics_df["merge_image_path"] = metrics_df[cfg.split_merge_col].apply(normalize_image_path)
@@ -255,13 +255,13 @@ def main():
 
     train_df, test_df = load_fixed_split(cfg)
 
-    # results = {}
-    # results["per_experiment"] = run_per_experiment(train_df, test_df, cfg, output_dir)
+    results = {}
+    results["per_experiment"] = run_per_experiment(train_df, test_df, cfg, output_dir)
 
-    # summary_df = pd.DataFrame(results).T
-    # summary_path = output_dir / "summary_metrics.csv"
-    # summary_df.to_csv(summary_path)
-    # print(f"\nSaved summary metrics to {summary_path}")
+    summary_df = pd.DataFrame(results).T
+    summary_path = output_dir / "summary_metrics.csv"
+    summary_df.to_csv(summary_path)
+    print(f"\nSaved summary metrics to {summary_path}")
 
 
 if __name__ == "__main__":

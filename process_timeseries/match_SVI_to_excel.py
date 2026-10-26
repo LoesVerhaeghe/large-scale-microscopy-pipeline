@@ -55,14 +55,16 @@ print("Rows with at least one SVI value:", len(svi))
 
 ## read investtigation excel
 # read excel overview sheet
-excel_path="data/microscopic_match_table_extended.xlsx"
+# excel_path="data/microscopic_match_table_extended.xlsx"
+excel_path="data/microscopic_match_table_extended_since_april2026.xlsx"
 microscopic_match_table = pd.read_excel(excel_path)
 
 # unique order nrs that can be linked to images in the match_table
 matched_orders = set(microscopic_match_table["order_nr"]) 
 
 # read excel overview sheet
-excel_path="data/Aquafin_data_cleaned/other_files/microscopie_compleet_overzicht (slims databank + oude access databank).xlsx"
+# excel_path="data/Aquafin_data_cleaned/other_files/microscopie_compleet_overzicht (slims databank + oude access databank).xlsx"
+excel_path = "data/Aquafin data (vertrouwelijk NDA)-ORIGINAL/microscopie_compleet_overzicht aanvulling tot september 2026.xlsx"
 overview_df = pd.read_excel(excel_path, sheet_name="Overzicht")
 
 
@@ -166,7 +168,7 @@ match_df_all = pd.DataFrame(match_table_all)
 ### match found SVIs to image match table
 
 # read table with images that are a match to the overview table
-microscopic_match_table_extended = pd.read_excel("data/microscopic_match_table_extended.xlsx")
+microscopic_match_table_extended = pd.read_excel("data/microscopic_match_table_extended_since_april2026.xlsx")
 
 # Merge all overview information into the match table
 microscopic_match_table_extended_withsvi = microscopic_match_table_extended.merge(
@@ -186,5 +188,5 @@ microscopic_match_table_extended_withsvi = (
 )
 
 
-microscopic_match_table_extended_withsvi.to_excel("data/microscopic_match_table_extended_withsvi.xlsx", index=False) # save it here for Nusret
+microscopic_match_table_extended_withsvi.to_excel("data/microscopic_match_table_extended_since_april2026_withsvi.xlsx", index=False) # save it here for Nusret
 

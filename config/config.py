@@ -27,14 +27,14 @@ from pathlib import Path
 @dataclass
 class PipelineConfig:
     # ---- run identity -----------------------------------------------------
-    run_name: str = "SegFormer_v3"          # CHANGE THIS per finetuning iteration, v3 = with greyscaling
+    run_name: str = "SegFormerB3_PCMandPil_noVal"          # CHANGE THIS per finetuning iteration, v3 = with greyscaling
 
     # ---- top-level paths ----------------------------------------------------
     data_dir: Path = Path("data")
     output_root: Path = Path("outputs")
 
     # ---- segmentation model --------------------------------------------------
-    seg_checkpoint_path: str = "models/trained_SegFormer_noVal.pt"  # CHANGE THIS per finetuning iteration
+    seg_checkpoint_path: str = "models/trained_SegFormerB3_PCMandPil_noVal.pt"  # CHANGE THIS per finetuning iteration
     num_seg_classes: int = 3
     class_names: tuple = ("background", "floc", "filament")
     class_colors: dict = field(default_factory=lambda: {
@@ -45,11 +45,11 @@ class PipelineConfig:
 
     # ---- thresholds (from your threshold-optimization step; index-aligned
     # with class_names -- background has none since it's the default) --------
-    floc_threshold: float = 0.7814933       # CHECK/RE-TUNE per finetuning iteration v3
-    filament_threshold: float = 0.6403097   # CHECK/RE-TUNE per finetuning iteration v3
+    floc_threshold: float = 0.64784441728786      # CHECK/RE-TUNE per finetuning iteration v3
+    filament_threshold: float = 0.903185   # CHECK/RE-TUNE per finetuning iteration v3
 
     # ---- tiled inference ------------------------------------------------------
-    tile_size: int = 1024
+    tile_size: int = 512
     overlap: int = 64
 
     # ---- normalization (must match whatever the segmentation model was
@@ -67,8 +67,8 @@ class PipelineConfig:
     metrics_eval_subdirname: str = "sample_images_phasecontrast"   # subfolder inside qc_images_dir for script 04
 
     # ---- full-dataset inference inputs -----------------------------------------
-    match_table_path: str = "data/microscopic_match_table_extended.xlsx"
-    phase_contrast_classification_path: str = "data/PhaseContrast Classifier/microscopyClassificationsV2_OCR_clean.csv"
+    match_table_path: str = "data/microscopic_match_table_extended_merged_withsvi.xlsx"
+    phase_contrast_classification_path: str = "data/PhaseContrast Classifier/microscopyClassifications_OCR_clean_merged.csv"
 
     # ---- fixed train/test split ----------
     split_train_sheet: str = "train"

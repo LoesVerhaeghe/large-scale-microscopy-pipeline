@@ -47,7 +47,7 @@ filament_features = [
 ]
 
 
-classifier_class_names = ["Matig", "Veel", "Zeer veel"]
+classifier_class_names = ['Matig', 'Veel', 'Zeer veel']
 
 def normalize_image_path(path):
     path = str(path).replace("\\", "/")
@@ -66,8 +66,8 @@ def load_fixed_split(cfg):
     """
     metrics_df = pd.read_excel(cfg.metrics_path)
 
-    train_split = pd.read_excel("/data/nvme3/loesv/analysis/filaments/SSCO_FIG_2_GroupSplit_Seed0_Majority.xlsx", sheet_name='train')
-    test_split = pd.read_excel("/data/nvme3/loesv/analysis/filaments/SSCO_FIG_2_GroupSplit_Seed0_Majority.xlsx", sheet_name='test')
+    train_split = pd.read_excel("/data/nvme3/loesv/analysis/train_test_splits/filamentabundance_train_test_split_majority.xlsx", sheet_name='train')
+    test_split = pd.read_excel("/data/nvme3/loesv/analysis/train_test_splits/filamentabundance_train_test_split_majority.xlsx", sheet_name='test')
 
     # Normalize paths before merging
     metrics_df["merge_image_path"] = metrics_df[cfg.split_merge_col].apply(normalize_image_path)
@@ -95,7 +95,7 @@ def load_fixed_split(cfg):
 
     n_unmapped = train_df["target_encoded"].isna().sum() + test_df["target_encoded"].isna().sum()
     if n_unmapped > 0:
-        print(f"Warning: {n_unmapped} rows have a label not in cfg.classifier_labels, dropping them")
+        print(f"Warning: {n_unmapped} rows have a label not in classifier_class_names, dropping them")
         train_df = train_df.dropna(subset=["target_encoded"])
         test_df = test_df.dropna(subset=["target_encoded"])
 

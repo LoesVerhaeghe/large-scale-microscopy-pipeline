@@ -72,8 +72,8 @@ def load_fixed_split(cfg):
     """
     metrics_df = pd.read_excel(cfg.metrics_path)
 
-    train_split = pd.read_excel("/data/nvme3/loesv/analysis/filaments/data/SSCO_FIG_2_GroupSplit_Seed0.xlsx", sheet_name=cfg.split_train_sheet)
-    test_split = pd.read_excel("/data/nvme3/loesv/analysis/filaments/data/SSCO_FIG_2_GroupSplit_Seed0.xlsx", sheet_name=cfg.split_test_sheet)
+    train_split = pd.read_excel("/data/nvme3/loesv/analysis/train_test_splits/filamenteffect_train_test_split.xlsx", sheet_name=cfg.split_train_sheet)
+    test_split = pd.read_excel("/data/nvme3/loesv/analysis/train_test_splits/filamenteffect_train_test_split.xlsx", sheet_name=cfg.split_test_sheet)
 
     # Normalize paths before merging
     metrics_df["merge_image_path"] = metrics_df[cfg.split_merge_col].apply(normalize_image_path)
@@ -94,19 +94,8 @@ def load_fixed_split(cfg):
     print(f"Test:  {len(test_split)} rows in split workbook -> {len(test_df)} matched to metrics "
           f"({test_df[cfg.split_group_col].nunique()} experiments)")
 
-    label_to_id = {label: index for index, label in enumerate(classifier_class_names)}
-
-    train_df["target_encoded"] = train_df[target].map(label_to_id)
-    test_df["target_encoded"] = test_df[target].map(label_to_id)
-
-    n_unmapped = train_df["target_encoded"].isna().sum() + test_df["target_encoded"].isna().sum()
-    if n_unmapped > 0:
-        print(f"Warning: {n_unmapped} rows have a label not in cfg.classifier_labels, dropping them")
-        train_df = train_df.dropna(subset=["target_encoded"])
-        test_df = test_df.dropna(subset=["target_encoded"])
-
-    train_df["target_encoded"] = train_df["target_encoded"].astype(int)
-    test_df["target_encoded"] = test_df["target_encoded"].astype(int)
+    train_df["target_encoded"] = train_df["label_id"].astype(int)
+    test_df["target_encoded"] = test_df["label_id"].astype(int)
 
     return train_df, test_df
 
@@ -244,15 +233,15 @@ def main():
 
     train_df, test_df = load_fixed_split(cfg)
 
-    # results = {}
-    # _, per_image_model = run_per_image(train_df, test_df, cfg, output_dir)
-    # results["per_experiment"] = run_per_experiment(train_df, test_df, cfg, output_dir)
-    # results["per_image_majority_vote"] = run_per_image_majority_vote(test_df, per_image_model, cfg, output_dir)
+    results = {}
+    _, per_image_model = run_per_image(train_df, test_df, cfg, output_dir)
+    results["per_experiment"] = run_per_experiment(train_df, test_df, cfg, output_dir)
+    results["per_image_majority_vote"] = run_per_image_majority_vote(test_df, per_image_model, cfg, output_dir)
 
-    # summary_df = pd.DataFrame(results).T
-    # summary_path = output_dir / "summary_metrics.csv"
-    # summary_df.to_csv(summary_path)
-    # print(f"\nSaved summary metrics to {summary_path}")
+    summary_df = pd.DataFrame(results).T
+    summary_path = output_dir / "summary_metrics.csv"
+    summary_df.to_csv(summary_path)
+    print(f"\nSaved summary metrics to {summary_path}")
 
 
 if __name__ == "__main__":
