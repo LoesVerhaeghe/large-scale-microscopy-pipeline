@@ -88,8 +88,8 @@ def load_fixed_split(cfg):
     """
     metrics_df = pd.read_excel(cfg.metrics_path)
 
-    train_split = pd.read_excel("/data/nvme3/loesv/analysis/train_test_splits/flocsizes_train_test_split.xlsx", sheet_name='train')
-    test_split = pd.read_excel("/data/nvme3/loesv/analysis/train_test_splits/flocsizes_train_test_split.xlsx", sheet_name='test')
+    train_split = pd.read_excel("/data/nvme3/loesv/analysis/train_test_splits_newdata_test/flocsizes_train_test_split.xlsx", sheet_name='train')
+    test_split = pd.read_excel("/data/nvme3/loesv/analysis/train_test_splits_newdata_test/flocsizes_train_test_split.xlsx", sheet_name='test')
 
     # Normalize paths before merging
     metrics_df["merge_image_path"] = metrics_df[cfg.split_merge_col].apply(normalize_image_path)

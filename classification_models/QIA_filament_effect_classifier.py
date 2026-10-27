@@ -71,7 +71,6 @@ def load_fixed_split(cfg):
     the target label and filament features come from the metrics table.
     """
     metrics_df = pd.read_excel(cfg.metrics_path)
-
     train_split = pd.read_excel("/data/nvme3/loesv/analysis/train_test_splits/filamenteffect_train_test_split.xlsx", sheet_name=cfg.split_train_sheet)
     test_split = pd.read_excel("/data/nvme3/loesv/analysis/train_test_splits/filamenteffect_train_test_split.xlsx", sheet_name=cfg.split_test_sheet)
 

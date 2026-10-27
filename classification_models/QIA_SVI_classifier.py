@@ -77,8 +77,8 @@ def load_fixed_split(cfg):
     """
     metrics_df = pd.read_excel(cfg.metrics_path)
 
-    train_split = pd.read_excel("outputs/process_timeseries/SVI_train_test_split.xlsx", sheet_name='train')
-    test_split = pd.read_excel("outputs/process_timeseries/SVI_train_test_split.xlsx", sheet_name='test')
+    train_split = pd.read_excel("/data/nvme3/loesv/analysis/train_test_splits_newdata_test/SVI_train_test_split.xlsx", sheet_name='train')
+    test_split = pd.read_excel("/data/nvme3/loesv/analysis/train_test_splits_newdata_test/SVI_train_test_split.xlsx", sheet_name='test')
 
     metrics_df = metrics_df.drop_duplicates().reset_index(drop=True)
     train_split = train_split.drop_duplicates().reset_index(drop=True)

@@ -50,9 +50,9 @@ import matplotlib.pyplot as plt
 @dataclass
 class Config:
     seg_checkpoint_path: str = cfg.seg_checkpoint_path  
-    split_workbook_path: str = "/data/nvme3/loesv/analysis/filamentDensity/SSCO_FIG_2_GroupSplit_Seed0_Majority.xlsx"
-    split_train_sheet: str = cfg.split_train_sheet
-    split_test_sheet: str = cfg.split_test_sheet
+    split_workbook_path: str = "/data/nvme3/loesv/analysis/train_test_splits_newdata_test/filamentabundance_train_test_split_majority.xlsx"
+    split_train_sheet: str = "train"
+    split_test_sheet: str ="test"
     split_merge_col: str = cfg.split_merge_col
     split_group_col: str = cfg.split_group_col
     norm_mean: int = cfg.norm_mean
